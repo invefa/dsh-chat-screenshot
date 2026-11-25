@@ -44,7 +44,11 @@ The plugin id is `dsh-chat-screenshot`. Reload the page after installing.
 1. Open a conversation.
 2. Whole conversation: click the camera in the composer toolbar and wait for the "long screenshot copied" toast.
 3. One turn: hover the reply, click the camera in its action row, and wait for the "turn screenshot copied" toast.
-4. Paste with Ctrl+V anywhere that accepts an image.
+4. A few turns: right-click the camera in the composer toolbar and pick **Choose turns…**, tick the exchanges you want, and confirm. The ticked turns are stacked into one picture in reading order.
+5. Paste with Ctrl+V anywhere that accepts an image.
+
+The same right-click menu offers **Last turn**, which captures the exchange that is open right now — a reply that is still streaming counts as a turn, so the picture holds whatever has arrived.
+The menu and the chooser are the host's own components, so they follow the application's theme and keyboard handling.
 
 A successful copy flashes a check over the icon. When the clipboard is unavailable the picture is downloaded and the icon stays unchanged.
 
@@ -79,7 +83,7 @@ Choices live in this browser's `localStorage` under `chat-screenshot.options`; t
 | `src/client/dom/` | Clone preparation, history paging, the blocks the settings add, turn band, the capture itself |
 | `src/client/render/` | Renderer choice, SVG document, hand painter, crop, canvas budget |
 | `src/client/output/` | Clipboard write and download |
-| `src/client/views/` | The button body, the two entries, the two icons, the settings section |
+| `src/client/views/` | The button body, the right-click menu, the turn chooser, the two entries, the icons, the settings section |
 | `src/client/manifest.json` | Bundle order |
 | `client.js` | Generated bundle; do not edit |
 | `build.mjs` | Joins the parts into `client.js` |

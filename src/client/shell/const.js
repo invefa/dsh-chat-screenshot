@@ -138,6 +138,12 @@ export const CLOCK_ROW_ATTRIBUTE = 'data-clock'
 export const PRUNE_DEPTH = 12
 
 /**
+ * How much of the opening message a turn chooser shows. The label is read from the user message and
+ * clipped, because a menu row is one line and the message itself can be a paragraph.
+ */
+export const TURN_LABEL_CHARS = 48
+
+/**
  * The floating "back to bottom" control. Its wrapper carries the host's `toBottomSlot` class, the
  * only language-independent handle on it, because the button's own label is translated.
  */

@@ -162,6 +162,20 @@ export const STYLES = String.raw`
 .cs-set-reset:hover {
   background: var(--dsw-alias-bg-layer-2);
 }
+.cs-pick-hint {
+  margin: 0 0 12px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cs-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 46vh;
+  padding-right: 4px;
+  overflow-y: auto;
+}
 `
 
 /**

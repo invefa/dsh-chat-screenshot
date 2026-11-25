@@ -3,12 +3,13 @@
  * `CaptureButton` draws it, and the two exported components only decide what a click captures.
  */
 
-import { h, useCallback } from '../shell/runtime.js'
+import { h, useState, useCallback } from '../shell/runtime.js'
 import { useCaptureStatus, deliver } from '../shell/status.js'
 import { captureConversation, conversationRoot } from '../dom/capture.js'
-import { captureTurn } from '../dom/turn.js'
+import { captureTurn, captureTurns, turnList } from '../dom/turn.js'
 import { hasOlderPages, loadFullHistory } from '../dom/paging.js'
 import { CameraIcon, CheckIcon } from './icons.js'
+import { CaptureMenu, TurnPicker } from './menu.js'
 
 /**
  * One button with its spinner, its success check and its toast.
@@ -18,9 +19,11 @@ import { CameraIcon, CheckIcon } from './icons.js'
  * @param props.label - the accessible name of the entry.
  * @param props.hint - the tooltip, which says what one click captures.
  * @param props.onClick - starts the capture.
+ * @param props.onContextMenu - opens the scope menu, or undefined when the host cannot draw one.
  * @param props.anchorRef - receives the wrapper element the capture anchors to.
+ * @param props.children - surfaces the entry raises, rendered beside the toast.
  */
-export function CaptureButton({ busy, status, done, label, hint, onClick, anchorRef }) {
+export function CaptureButton({ busy, status, done, label, hint, onClick, onContextMenu, anchorRef, children }) {
   return h(
     'div',
     { className: 'cs-root', ref: anchorRef },
@@ -33,7 +36,9 @@ export function CaptureButton({ busy, status, done, label, hint, onClick, anchor
         title: hint,
         'aria-label': label,
         'aria-busy': busy ? 'true' : undefined,
+        'aria-haspopup': onContextMenu === undefined ? undefined : 'menu',
         onMouseDown: (event) => event.preventDefault(),
+        onContextMenu,
         onClick: (event) => {
           event.preventDefault()
           onClick()
@@ -47,54 +52,135 @@ export function CaptureButton({ busy, status, done, label, hint, onClick, anchor
     ),
     status !== null &&
       h('div', { className: 'cs-toast', role: 'status', 'aria-live': 'polite' }, status),
+    children,
   )
 }
 
 /**
- * Whole conversation: drains the history first, then captures everything that is loaded. When the
- * history cannot be drained the picture is still produced, and the message says it covers the
- * loaded turns only.
+ * Whole conversation, or — through the right-click menu — one turn or a few of them. A plain click
+ * keeps its old meaning: drain the history, then capture everything that is loaded. When the history
+ * cannot be drained the picture is still produced, and the message says it covers the loaded turns
+ * only.
  */
 export function ScreenshotButton({ sessionId }) {
   const { t, busy, status, done, markDone, anchorRef, run } = useCaptureStatus()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [turns, setTurns] = useState([])
+  const [picked, setPicked] = useState([])
+  const [pickerOpen, setPickerOpen] = useState(false)
 
-  const produce = useCallback(
-    async (anchor, say) => {
+  const capture = useCallback(
+    async (anchor, say, scope) => {
       const root = conversationRoot(anchor)
       if (root === null) throw new Error('conversation not found')
       if (root.scrollHeight <= 1) throw new Error('empty')
 
       let historyComplete = true
-      // A disabled control and the "start of conversation" label both mean the history is already
-      // complete, so the entry never announces a wait it is not going to have.
-      if (hasOlderPages(root)) {
+      // Draining the history is only meaningful for the whole transcript: a turn band lives in the
+      // turns already loaded, and pulling older pages in would not add a row to the chooser.
+      if (scope.kind === 'whole' && hasOlderPages(root)) {
         say(t('state.loadingHistory'), true)
         historyComplete = await loadFullHistory(root)
       }
 
       say(t('state.rendering'), true)
-      const shot = await captureConversation(anchor)
+      const shot =
+        scope.kind === 'whole' ? await captureConversation(anchor) : await captureTurns(root, scope.indices)
       const copied = await deliver(shot, {
         announce: say,
         t,
         sessionId,
-        partial: !historyComplete,
-        success: (taken) => t('state.copied', { width: taken.width, height: taken.height }),
+        partial: scope.kind === 'whole' && !historyComplete,
+        success: (taken) =>
+          scope.kind === 'whole'
+            ? t('state.copied', { width: taken.width, height: taken.height })
+            : t('state.turnsCopied', {
+                turns: scope.indices.length,
+                width: taken.width,
+                height: taken.height,
+              }),
       })
       if (copied) markDone()
     },
     [markDone, sessionId, t],
   )
 
-  return h(CaptureButton, {
-    busy,
-    status,
-    done,
-    label: t('action.whole'),
-    hint: t('action.wholeHint'),
-    anchorRef,
-    onClick: () => run(produce),
-  })
+  const captureNow = useCallback(
+    (scope) => {
+      run((anchor, say) => capture(anchor, say, scope))
+    },
+    [capture, run],
+  )
+
+  const openMenu = (event) => {
+    const root = conversationRoot(event.currentTarget)
+    if (root === null) return
+    event.preventDefault()
+    setTurns(turnList(root))
+    setPicked([])
+    setMenuOpen(true)
+  }
+
+  const select = (id) => {
+    setMenuOpen(false)
+    if (id === 'whole') {
+      captureNow({ kind: 'whole' })
+      return
+    }
+    if (id === 'last') {
+      // The last entry is the turn that is open right now, if the model is still answering.
+      const last = turns.length - 1
+      if (last >= 0) captureNow({ kind: 'turns', indices: [last] })
+      return
+    }
+    setPickerOpen(true)
+  }
+
+  const toggle = (index, on) => {
+    setPicked((current) => {
+      const next = on ? [...current, index] : current.filter((value) => value !== index)
+      return next.sort((a, b) => a - b)
+    })
+  }
+
+  const items = [
+    { id: 'whole', label: t('menu.whole') },
+    { id: 'last', label: t('menu.last'), disabled: turns.length === 0 },
+    { id: 'pick', label: t('menu.pick'), disabled: turns.length === 0 },
+  ]
+
+  return h(
+    CaptureButton,
+    {
+      busy,
+      status,
+      done,
+      label: t('action.whole'),
+      hint: t('action.wholeHint'),
+      anchorRef,
+      onClick: () => captureNow({ kind: 'whole' }),
+      onContextMenu: openMenu,
+    },
+    h(CaptureMenu, {
+      open: menuOpen,
+      anchorRef,
+      items,
+      onSelect: select,
+      onClose: () => setMenuOpen(false),
+    }),
+    h(TurnPicker, {
+      open: pickerOpen,
+      turns,
+      picked,
+      t,
+      onToggle: toggle,
+      onCancel: () => setPickerOpen(false),
+      onConfirm: () => {
+        setPickerOpen(false)
+        if (picked.length > 0) captureNow({ kind: 'turns', indices: picked })
+      },
+    }),
+  )
 }
 
 /**

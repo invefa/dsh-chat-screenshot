@@ -34,6 +34,14 @@
         <nav>导航</nav>
         <div data-width-handle="true">handle</div>
         <div class="toBottomSlot">回到底部</div>
+        <div class="flow">
+          <div data-chat-flow-kind="user">第一轮 用户消息</div>
+          <div data-chat-turn="1"><div>第一轮回答</div><div data-turn-tail="true"><button type="button">操作</button></div></div>
+          <div data-chat-flow-kind="user">第二轮 用户消息</div>
+          <div data-chat-turn="2"><div>第二轮回答</div><div data-turn-tail="true"><button type="button">操作</button></div></div>
+          <div data-chat-flow-kind="user">第三轮 用户消息</div>
+          <div data-chat-turn="3"><div>第三轮回答（还在生成）</div></div>
+        </div>
       </div>
     </div>
     <script type="module">
@@ -42,6 +50,7 @@
       import { insertBlocks, insertMeta, fillTokens } from '../src/client/dom/inserts.js'
       import { planCrop } from '../src/client/dom/band.js'
       import { normalizeOptions } from '../src/client/shell/options.js'
+      import { turnList, pruneTurns } from '../src/client/dom/turn.js'
 
       const results = []
       const check = (name, ok, detail) => results.push({ name, ok: ok === true, detail: String(detail) })
@@ -112,7 +121,7 @@
       document.body.appendChild(holder)
 
       const clone = scroller.cloneNode(true)
-      const options = normalizeOptions({ title: '标题 {turns}', footer: '页脚', align: 'center' })
+      const options = normalizeOptions({ title: '标题 {turns}', footer: '页脚', align: 'center', showMeta: true })
       dropChrome(clone, options)
       clone.querySelector('[data-chat-history]')?.remove()
       clone.style.height = 'auto'
@@ -146,7 +155,32 @@
 
       holder.remove()
 
+      // --- turns, as the right-click menu reads them ---------------------------------------------
+      const turns = turnList(scroller)
+      check('three turns are listed', turns.length === 3, String(turns.length))
+      check('a turn is keyed by its opening message', turns[0].label === '第一轮 用户消息', turns[0].label)
+      check('a finished turn finds its tail', turns[0].tail !== null && turns[1].tail !== null, `${turns[0].tail !== null}/${turns[1].tail !== null}`)
+      check('a reply still streaming has no tail', turns[2].tail === null, turns[2].tail === null ? 'null' : 'found')
+
+      const single = scroller.cloneNode(true)
+      const prunedSingle = pruneTurns(single, [1])
+      const singleUnits = Array.from(single.querySelector('.flow').children).map((el) => el.textContent.trim().slice(0, 4))
+      check('one turn keeps its own units', prunedSingle === true && singleUnits.length === 2, singleUnits.join('|'))
+      check('the other turns are dropped', !singleUnits.join('').includes('第一轮') && !singleUnits.join('').includes('第三轮'), singleUnits.join('|'))
+
+      const multi = scroller.cloneNode(true)
+      pruneTurns(multi, [0, 2])
+      const multiUnits = Array.from(multi.querySelector('.flow').children).map((el) => el.textContent.trim().slice(0, 3))
+      check('two turns keep four units', multiUnits.length === 4, multiUnits.join('|'))
+      check('the unselected middle turn is gone', !multiUnits.join('').includes('第二轮'), multiUnits.join('|'))
+      check('the streaming turn is capturable', multiUnits.join('').includes('第三'), multiUnits.join('|'))
+      check('an out-of-range index keeps nothing', pruneTurns(scroller.cloneNode(true), [9]) === false, 'pruned')
+
       window.__verify = results
+      const report = document.createElement('pre')
+      report.id = 'report'
+      report.textContent = results.map((entry) => `${entry.ok ? 'ok  ' : 'FAIL'} ${entry.name} — ${entry.detail}`).join('\n')
+      document.body.appendChild(report)
       document.title = results.every((entry) => entry.ok) ? 'PASS' : 'FAIL'
     </script>
   </body>

@@ -159,6 +159,12 @@ window.__ModuleLoader__.load({
     const PRUNE_DEPTH = 12
 
     /**
+     * How much of the opening message a turn chooser shows. The label is read from the user message and
+     * clipped, because a menu row is one line and the message itself can be a paragraph.
+     */
+    const TURN_LABEL_CHARS = 48
+
+    /**
      * The floating "back to bottom" control. Its wrapper carries the host's `toBottomSlot` class, the
      * only language-independent handle on it, because the button's own label is translated.
      */
@@ -184,6 +190,22 @@ window.__ModuleLoader__.load({
 
     const loaded = typeof require === 'function'
 
+    /**
+     * The host's own UI kit. It is a platform seed word rather than a package on disk, so the lookup is
+     * guarded: an older host that does not seed it leaves `native` undefined and every surface built on
+     * it simply stays closed, while the capture entries keep working.
+     */
+    function seedModule(specifier) {
+      if (!loaded) return undefined
+      try {
+        return require(specifier)
+      } catch {
+        return undefined
+      }
+    }
+
+    const native = seedModule('@deepseek-ai/dsh-client-ui-primitives')
+
     const react = loaded ? require('react') : undefined
 
     const h = loaded ? react.createElement : undefined
@@ -205,6 +227,10 @@ window.__ModuleLoader__.load({
 
     function useState(value) {
       return react.useState(value)
+    }
+
+    function useMemo(fn, deps) {
+      return react.useMemo(fn, deps)
     }
 
     // ===== shell/options.js ==========================================
@@ -400,6 +426,15 @@ window.__ModuleLoader__.load({
         'state.empty': '当前会话还没有可截图的内容',
         'state.turnMissing': '没有找到这一轮的范围，刷新页面后重试',
         'state.failed': '截图失败：{message}',
+        'state.turnsCopied': '已复制 {turns} 轮截图（{width}×{height}）',
+        'menu.whole': '整段对话',
+        'menu.last': '最后一轮',
+        'menu.pick': '选择轮次…',
+        'menu.pickTitle': '选择要截图的轮次',
+        'menu.pickHint': '勾选要放进同一张图片的问答轮次，按对话顺序排列。',
+        'menu.confirm': '截图所选（{turns}）',
+        'menu.cancel': '取消',
+        'menu.turn': '第 {index} 轮',
         'insert.meta': '{turns} 轮对话 · {date} {time}',
         'settings.title': '对话截图',
         'settings.intro': '控制截图里保留哪些控件、额外加上哪些文字，以及图片的排布。设置即刻生效，立即保存在本机。',
@@ -463,6 +498,15 @@ window.__ModuleLoader__.load({
         'state.empty': 'Nothing to capture in this conversation yet',
         'state.turnMissing': 'Could not resolve this turn, reload the page and try again',
         'state.failed': 'Screenshot failed: {message}',
+        'state.turnsCopied': 'Copied {turns} turns ({width}×{height})',
+        'menu.whole': 'Whole conversation',
+        'menu.last': 'Last turn',
+        'menu.pick': 'Choose turns…',
+        'menu.pickTitle': 'Choose the turns to capture',
+        'menu.pickHint': 'Tick the exchanges that belong in one picture; they keep their reading order.',
+        'menu.confirm': 'Capture {turns} selected',
+        'menu.cancel': 'Cancel',
+        'menu.turn': 'Turn {index}',
         'insert.meta': 'Turns: {turns} · {date} {time}',
         'settings.title': 'Chat screenshot',
         'settings.intro':
@@ -739,6 +783,20 @@ window.__ModuleLoader__.load({
     }
     .cs-set-reset:hover {
       background: var(--dsw-alias-bg-layer-2);
+    }
+    .cs-pick-hint {
+      margin: 0 0 12px;
+      color: var(--dsw-alias-label-secondary);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .cs-pick-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 46vh;
+      padding-right: 4px;
+      overflow-y: auto;
     }
     `
 
@@ -2218,6 +2276,95 @@ window.__ModuleLoader__.load({
       })
     }
 
+    /**
+     * The turns of a conversation, in reading order.
+     *
+     * A turn is keyed by the user message that opens it, not by the tail: a reply that is still streaming
+     * has no tail yet, and the reader asking for "the last turn" while the model is talking means this
+     * one. `tail` is null for exactly that open turn.
+     * @returns [{ mark, next, tail, label }], one entry per opening message.
+     */
+    function turnList(root) {
+      const marks = [...root.querySelectorAll(`[${USER_FLOW_KIND}]`)]
+      const tails = [...root.querySelectorAll(`[${TURN_TAIL_ATTRIBUTE}]`)]
+      return marks.map((mark, index) => {
+        const next = marks[index + 1] ?? null
+        const tail = tails.find((candidate) => precedes(mark, candidate) && (next === null || precedes(candidate, next))) ?? null
+        return { mark, next, tail, label: markLabel(mark) }
+      })
+    }
+
+    /** The opening message collapsed to one line, clipped for a menu row. */
+    function markLabel(mark) {
+      const text = (mark.textContent ?? '').replace(/\s+/gu, ' ').trim()
+      return text.length <= TURN_LABEL_CHARS ? text : `${text.slice(0, TURN_LABEL_CHARS - 1)}…`
+    }
+
+    /**
+     * The flow units one turn owns. A closed turn takes the tail band, which stops before the next user
+     * message; an open one has no tail to stop at, so it runs from its opening message to the end of the
+     * container the message sits in.
+     */
+    function turnBandOf(root, entry) {
+      if (entry.tail !== null) return turnBand(entry.tail, root)
+      const container = entry.mark.parentElement
+      if (container === null) return null
+      const units = [...container.children]
+      const unit = units.find((child) => child === entry.mark || child.contains(entry.mark))
+      const start = units.indexOf(unit)
+      if (start < 0) return null
+      return { container, keep: new Set(units.slice(start)) }
+    }
+
+    /**
+     * Keep only the selected turns in a tree that mirrors the conversation.
+     *
+     * The bands are resolved in the given root, keyed by the same opening-message index, and the kept
+     * units of every selected band are unioned before anything is removed — a turn whose band shares a
+     * container with another selected turn must not delete that turn's units.
+     * @param indices - indexes into `turnList(root)`.
+     * @returns whether any band was found at all.
+     */
+    function pruneTurns(root, indices) {
+      const entries = turnList(root)
+      const picked = [...new Set(indices)].filter((index) => entries[index] !== undefined).sort((a, b) => a - b)
+      if (picked.length === 0) return false
+      const containers = new Map()
+      let found = false
+      for (const index of picked) {
+        const band = turnBandOf(root, entries[index])
+        if (band === null) continue
+        found = true
+        const keep = containers.get(band.container) ?? new Set()
+        for (const unit of band.keep) keep.add(unit)
+        containers.set(band.container, keep)
+      }
+      if (!found) return false
+      for (const [container, keep] of containers) {
+        for (const unit of [...container.children]) {
+          if (!keep.has(unit)) unit.remove()
+        }
+      }
+      return true
+    }
+
+    /**
+     * Render several turns of one conversation to a single PNG, in the order they appear.
+     * @param indices - indexes into `turnList(root)`; the last one anchors the crop.
+     */
+    async function captureTurns(root, indices) {
+      const entries = turnList(root)
+      const picked = [...new Set(indices)].filter((index) => entries[index] !== undefined).sort((a, b) => a - b)
+      if (picked.length === 0) throw new Error('turn not found')
+      for (const index of picked) {
+        if (turnBandOf(root, entries[index]) === null) throw new Error('turn not found')
+      }
+      const anchor = entries[picked[picked.length - 1]].mark
+      return captureConversation(anchor, (clone) => {
+        if (!pruneTurns(clone, picked)) throw new Error('turn not found')
+      })
+    }
+
     // ===== dom/capture.js ============================================
 
     /**
@@ -2609,6 +2756,72 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // ===== views/menu.js =============================================
+
+    /**
+     * The surfaces the capture entry raises: the right-click menu and the turn chooser.
+     *
+     * Both are the host's own components, taken from the platform seed module, so they inherit the
+     * application's styling, keyboard handling, focus trap and portal behaviour instead of imitating it.
+     * When an older host does not seed that module, `native` is undefined and both surfaces render
+     * nothing: the plain click on the entry still captures the whole conversation.
+     */
+
+
+    /** The host menu, or nothing when the host has no seed module to draw it with. */
+    function CaptureMenu({ open, anchorRef, items, onSelect, onClose }) {
+      if (native === undefined) return null
+      return h(native.Menu, {
+        open,
+        anchorRef,
+        side: 'top',
+        align: 'start',
+        portal: true,
+        items,
+        onSelect,
+        onClose,
+      })
+    }
+
+    /**
+     * The turn chooser: one checkbox row per turn, keyed by the user message that opens it, with the
+     * host's modal frame around them.
+     * @param props.turns - `turnList(root)` entries, in reading order.
+     * @param props.picked - indexes currently selected.
+     */
+    function TurnPicker({ open, turns, picked, onToggle, onCancel, onConfirm, t }) {
+      if (native === undefined) return null
+      const footer = [
+        h(native.Button, { key: 'cancel', variant: 'ghost', onClick: onCancel }, t('menu.cancel')),
+        h(
+          native.Button,
+          { key: 'confirm', variant: 'primary', disabled: picked.length === 0, onClick: onConfirm },
+          t('menu.confirm', { turns: picked.length }),
+        ),
+      ]
+      const rows = turns.map((turn, index) =>
+        h(native.Checkbox, {
+          key: index,
+          checked: picked.includes(index),
+          onChange: (on) => onToggle(index, on),
+          label: turn.label === '' ? t('menu.turn', { index: index + 1 }) : `${index + 1}. ${turn.label}`,
+        }),
+      )
+      return h(
+        native.Modal,
+        {
+          open,
+          onClose: onCancel,
+          title: t('menu.pickTitle'),
+          closeLabel: t('menu.cancel'),
+          footer,
+          className: 'cs-pick',
+        },
+        h('p', { className: 'cs-pick-hint' }, t('menu.pickHint')),
+        h('div', { className: 'cs-pick-list' }, rows),
+      )
+    }
+
     // ===== views/buttons.js ==========================================
 
     /**
@@ -2625,9 +2838,11 @@ window.__ModuleLoader__.load({
      * @param props.label - the accessible name of the entry.
      * @param props.hint - the tooltip, which says what one click captures.
      * @param props.onClick - starts the capture.
+     * @param props.onContextMenu - opens the scope menu, or undefined when the host cannot draw one.
      * @param props.anchorRef - receives the wrapper element the capture anchors to.
+     * @param props.children - surfaces the entry raises, rendered beside the toast.
      */
-    function CaptureButton({ busy, status, done, label, hint, onClick, anchorRef }) {
+    function CaptureButton({ busy, status, done, label, hint, onClick, onContextMenu, anchorRef, children }) {
       return h(
         'div',
         { className: 'cs-root', ref: anchorRef },
@@ -2640,7 +2855,9 @@ window.__ModuleLoader__.load({
             title: hint,
             'aria-label': label,
             'aria-busy': busy ? 'true' : undefined,
+            'aria-haspopup': onContextMenu === undefined ? undefined : 'menu',
             onMouseDown: (event) => event.preventDefault(),
+            onContextMenu,
             onClick: (event) => {
               event.preventDefault()
               onClick()
@@ -2654,54 +2871,135 @@ window.__ModuleLoader__.load({
         ),
         status !== null &&
           h('div', { className: 'cs-toast', role: 'status', 'aria-live': 'polite' }, status),
+        children,
       )
     }
 
     /**
-     * Whole conversation: drains the history first, then captures everything that is loaded. When the
-     * history cannot be drained the picture is still produced, and the message says it covers the
-     * loaded turns only.
+     * Whole conversation, or — through the right-click menu — one turn or a few of them. A plain click
+     * keeps its old meaning: drain the history, then capture everything that is loaded. When the history
+     * cannot be drained the picture is still produced, and the message says it covers the loaded turns
+     * only.
      */
     function ScreenshotButton({ sessionId }) {
       const { t, busy, status, done, markDone, anchorRef, run } = useCaptureStatus()
+      const [menuOpen, setMenuOpen] = useState(false)
+      const [turns, setTurns] = useState([])
+      const [picked, setPicked] = useState([])
+      const [pickerOpen, setPickerOpen] = useState(false)
 
-      const produce = useCallback(
-        async (anchor, say) => {
+      const capture = useCallback(
+        async (anchor, say, scope) => {
           const root = conversationRoot(anchor)
           if (root === null) throw new Error('conversation not found')
           if (root.scrollHeight <= 1) throw new Error('empty')
 
           let historyComplete = true
-          // A disabled control and the "start of conversation" label both mean the history is already
-          // complete, so the entry never announces a wait it is not going to have.
-          if (hasOlderPages(root)) {
+          // Draining the history is only meaningful for the whole transcript: a turn band lives in the
+          // turns already loaded, and pulling older pages in would not add a row to the chooser.
+          if (scope.kind === 'whole' && hasOlderPages(root)) {
             say(t('state.loadingHistory'), true)
             historyComplete = await loadFullHistory(root)
           }
 
           say(t('state.rendering'), true)
-          const shot = await captureConversation(anchor)
+          const shot =
+            scope.kind === 'whole' ? await captureConversation(anchor) : await captureTurns(root, scope.indices)
           const copied = await deliver(shot, {
             announce: say,
             t,
             sessionId,
-            partial: !historyComplete,
-            success: (taken) => t('state.copied', { width: taken.width, height: taken.height }),
+            partial: scope.kind === 'whole' && !historyComplete,
+            success: (taken) =>
+              scope.kind === 'whole'
+                ? t('state.copied', { width: taken.width, height: taken.height })
+                : t('state.turnsCopied', {
+                    turns: scope.indices.length,
+                    width: taken.width,
+                    height: taken.height,
+                  }),
           })
           if (copied) markDone()
         },
         [markDone, sessionId, t],
       )
 
-      return h(CaptureButton, {
-        busy,
-        status,
-        done,
-        label: t('action.whole'),
-        hint: t('action.wholeHint'),
-        anchorRef,
-        onClick: () => run(produce),
-      })
+      const captureNow = useCallback(
+        (scope) => {
+          run((anchor, say) => capture(anchor, say, scope))
+        },
+        [capture, run],
+      )
+
+      const openMenu = (event) => {
+        const root = conversationRoot(event.currentTarget)
+        if (root === null) return
+        event.preventDefault()
+        setTurns(turnList(root))
+        setPicked([])
+        setMenuOpen(true)
+      }
+
+      const select = (id) => {
+        setMenuOpen(false)
+        if (id === 'whole') {
+          captureNow({ kind: 'whole' })
+          return
+        }
+        if (id === 'last') {
+          // The last entry is the turn that is open right now, if the model is still answering.
+          const last = turns.length - 1
+          if (last >= 0) captureNow({ kind: 'turns', indices: [last] })
+          return
+        }
+        setPickerOpen(true)
+      }
+
+      const toggle = (index, on) => {
+        setPicked((current) => {
+          const next = on ? [...current, index] : current.filter((value) => value !== index)
+          return next.sort((a, b) => a - b)
+        })
+      }
+
+      const items = [
+        { id: 'whole', label: t('menu.whole') },
+        { id: 'last', label: t('menu.last'), disabled: turns.length === 0 },
+        { id: 'pick', label: t('menu.pick'), disabled: turns.length === 0 },
+      ]
+
+      return h(
+        CaptureButton,
+        {
+          busy,
+          status,
+          done,
+          label: t('action.whole'),
+          hint: t('action.wholeHint'),
+          anchorRef,
+          onClick: () => captureNow({ kind: 'whole' }),
+          onContextMenu: openMenu,
+        },
+        h(CaptureMenu, {
+          open: menuOpen,
+          anchorRef,
+          items,
+          onSelect: select,
+          onClose: () => setMenuOpen(false),
+        }),
+        h(TurnPicker, {
+          open: pickerOpen,
+          turns,
+          picked,
+          t,
+          onToggle: toggle,
+          onCancel: () => setPickerOpen(false),
+          onConfirm: () => {
+            setPickerOpen(false)
+            if (picked.length > 0) captureNow({ kind: 'turns', indices: picked })
+          },
+        }),
+      )
     }
 
     /**

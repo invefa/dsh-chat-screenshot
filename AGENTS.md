@@ -68,6 +68,15 @@ Documentation is English with a `.zh-CN.md` edition.
   must never need a restart. The settings section is a single `settings.section` registration: the
   host draws the navigation label and hands the component `close` alone, so the section renders rows,
   not a heading.
+- The right-click menu and the turn chooser are the host's own components. `shell/runtime.js` exposes
+  them as `native`, read from the `@deepseek-ai/dsh-client-ui-primitives` seed word that the module
+  system hands every package; a hand-rolled menu would lose the theme, the focus trap and the keyboard
+  handling the surrounding UI already has. `native` may be undefined in a build that ships no seed, so
+  every use falls back to render nothing rather than to throw.
+- A turn is keyed by its opening message, not by the reply. Turns are read from
+  `[data-chat-flow-kind="user"]`, a turn ends where the next one opens, and a reply that is still
+  streaming has no `[data-turn-tail]` yet — it is still a turn, and it is capturable. Selecting several
+  turns keeps those bands and drops the rest, so the picture holds no gap where the skipped turns were.
 - Parts stay importable by node on their own: `export` on every top-level declaration (the build
   strips it when joining) and an `import` for everything used from a neighbour, even though the
   joined scope would hide the omission.

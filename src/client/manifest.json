@@ -20,6 +20,7 @@
   "dom/capture.js",
   "shell/status.js",
   "views/icons.js",
+  "views/menu.js",
   "views/buttons.js",
   "views/settings.js",
   "apply.js"
