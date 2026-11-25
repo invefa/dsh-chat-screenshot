@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Conversation Screenshot",
-    "description": "Adds a camera to the composer toolbar and to each reply's action row, copying the whole conversation or that one turn to the clipboard as a PNG."
+    "title": "Chat Screenshot",
+    "description": "Adds a camera to the composer toolbar and to each reply's action row, copying the whole conversation or that one turn to the clipboard as a PNG, with a settings page for the chrome it hides, the blocks it adds and the layout."
   }
 }

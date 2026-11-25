@@ -56,16 +56,58 @@ export const SKIP_ATTRIBUTES = [
   'data-dsh-screenshot-skip',
 ]
 
-/** Own labels of the paging control, lower case. Matched against the control's own text only. */
-export const LOAD_OLDER_LABELS = [
-  '加载更早',
-  '载入更早',
-  '加载历史',
-  'load older',
-  'load earlier',
-  'older messages',
-  'earlier messages',
+/**
+ * The paging control's own labels, lower case, grouped by the state they report.
+ *
+ * The host renders one button that carries all five labels at once and hides the inactive ones with
+ * `aria-hidden` and a class, so the control's text content is the concatenation of every state. The
+ * label therefore has to be read from the visible subtree, and the state has to be classified: the
+ * control stays mounted after the last page, it only turns `disabled` and switches to `start`, which
+ * is why "the control unmounted" is not the end of the history.
+ */
+export const PAGING_STATES = [
+  {
+    state: 'more',
+    labels: [
+      '加载更早',
+      '载入更早',
+      '加载历史',
+      'load older',
+      'load earlier',
+      'older messages',
+      'earlier messages',
+    ],
+  },
+  { state: 'retry', labels: ['重新加载', '重试加载', 'retry loading'] },
+  {
+    state: 'busy',
+    labels: ['正在加载', '正在载入', '加载中', 'loading earlier', 'loading older', 'processing', '正在处理'],
+  },
+  {
+    state: 'start',
+    labels: ['已到会话开头', '会话开头', 'start of conversation', 'start of chat', 'beginning of conversation'],
+  },
 ]
+
+/** Padding presets offered in the settings, in CSS pixels. */
+export const EDGE_CHOICES = [8, 24, 40]
+
+/** Scale factors offered in the settings; `auto` keeps the largest factor the canvas budget allows. */
+export const SCALE_CHOICES = ['auto', '1', '2', '3']
+
+/** Text alignment of the inserted header and footer. */
+export const ALIGN_CHOICES = ['left', 'center']
+
+/** Longest user text kept for the inserted blocks, in characters, so one paste cannot flood a picture. */
+export const INSERT_MAX_CHARS = { title: 120, subtitle: 160, footer: 200 }
+
+/**
+ * Host markers for the subtrees the settings can hide. Each is matched by attribute, never by one of
+ * its values: the host reuses the same marker for both sides of an exchange.
+ */
+export const PROCESS_ATTRIBUTE = 'data-turn-process'
+export const STEP_PROCESS_ATTRIBUTE = 'data-step-process'
+export const ATTACHMENTS_ATTRIBUTE = 'data-message-attachments'
 
 /** Theme tokens consulted for the page background, in order. */
 export const BACKGROUND_TOKENS = ['--dsw-alias-bg-base', '--dsw-alias-bg-layer-1']
@@ -73,6 +115,10 @@ export const BACKGROUND_TOKENS = ['--dsw-alias-bg-base', '--dsw-alias-bg-layer-1
 /** Marks the staged clone and its holder, so both can be found and removed again. */
 export const STAGE_ATTRIBUTE = 'data-dsh-screenshot-stage'
 export const HOLDER_ATTRIBUTE = 'data-dsh-screenshot-holder'
+
+/** Marks the blocks the settings can add above and below the transcript. */
+export const HEAD_ATTRIBUTE = 'data-dsh-screenshot-head'
+export const FOOT_ATTRIBUTE = 'data-dsh-screenshot-foot'
 
 /** Host markers the crop and the turn band are read from. */
 export const SCROLL_ATTRIBUTE = 'data-conversation-scroll'

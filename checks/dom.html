@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>chat-screenshot fixture</title>
+    <style>
+      body { margin: 0; font: 14px/1.6 system-ui, sans-serif; background: #fff; color: #1a1a1a; }
+      #root { width: 720px; padding: 0 24px; }
+      [data-conversation-scroll] { height: 600px; overflow: auto; }
+      .turn { padding: 12px 0; }
+      .clock { font-size: 12px; color: #888; }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div data-conversation-scroll="true">
+        <div data-chat-history="idle">
+          <button type="button">
+            <span class="hidden" aria-hidden="true">加载更早</span>
+            <span aria-hidden="false">正在加载</span>
+            <span class="hidden" aria-hidden="true">正在处理</span>
+            <span class="hidden" aria-hidden="true">重新加载</span>
+            <span class="hidden" aria-hidden="true">已到会话开头</span>
+          </button>
+        </div>
+        <div data-chat-turn="1" class="turn"><div>第一轮问题</div><div class="clock" data-clock="start">12:00</div></div>
+        <div data-chat-turn="2" class="turn">
+          <div data-step-process="true">思考中…</div>
+          <div>第一轮回答</div>
+          <div data-message-attachments="true">a.png</div>
+          <div class="clock" data-clock="end">12:01</div>
+        </div>
+        <nav>导航</nav>
+        <div data-width-handle="true">handle</div>
+        <div class="toBottomSlot">回到底部</div>
+      </div>
+    </div>
+    <script type="module">
+      import { readPaging, classifyPaging, hasOlderPages, findLoadOlder } from '../src/client/dom/paging.js'
+      import { dropChrome } from '../src/client/dom/clone.js'
+      import { insertBlocks, insertMeta, fillTokens } from '../src/client/dom/inserts.js'
+      import { planCrop } from '../src/client/dom/band.js'
+      import { normalizeOptions } from '../src/client/shell/options.js'
+
+      const results = []
+      const check = (name, ok, detail) => results.push({ name, ok: ok === true, detail: String(detail) })
+      const scroller = document.querySelector('[data-conversation-scroll]')
+
+      // --- the paging control, as the host mounts it: one button carrying all five labels ----------
+      const paging = readPaging(scroller)
+      check('paging is found', paging !== null, paging === null ? 'null' : 'ok')
+      check('the visible label decides the state', paging?.state === 'busy', paging?.state)
+      check('a busy control is not a click target', findLoadOlder(scroller) === null, findLoadOlder(scroller)?.tagName ?? 'null')
+      check('a busy control still means older pages exist', hasOlderPages(scroller) === true, hasOlderPages(scroller))
+      check('all five labels at once classify to nothing', classifyPaging('加载更早正在加载正在处理重新加载已到会话开头') === null, classifyPaging('加载更早正在加载正在处理重新加载已到会话开头'))
+
+      const button = scroller.querySelector('[data-chat-history] button')
+      const show = (index) => {
+        button.querySelectorAll('span').forEach((span, at) => {
+          span.classList.toggle('hidden', at !== index)
+          span.setAttribute('aria-hidden', at === index ? 'false' : 'true')
+        })
+      }
+
+      // --- the actionable state ------------------------------------------------------------------
+      show(0)
+      const more = readPaging(scroller)
+      check('the "more" label is the actionable one', more?.state === 'more' && findLoadOlder(scroller) === button, more?.state)
+      check('"more" offers pages', hasOlderPages(scroller) === true, hasOlderPages(scroller))
+
+      show(3)
+      check('the retry label is clickable too', findLoadOlder(scroller) === button, findLoadOlder(scroller)?.tagName ?? 'null')
+
+      // --- the end of the history: mounted, disabled, labelled "start" ----------------------------
+      button.disabled = true
+      show(4)
+      const start = readPaging(scroller)
+      check('a disabled control reports its label', start?.state === 'start' && start.disabled === true, `${start?.state}/${start?.disabled}`)
+      check('a disabled control is not a click target', findLoadOlder(scroller) === null, 'clickable')
+      check('the end of the history offers no pages', hasOlderPages(scroller) === false, 'claims pages')
+      check('the control is still in the layout', scroller.querySelector('[data-chat-history]') !== null, 'unmounted')
+
+      // --- chrome pruning follows the switches ----------------------------------------------------
+      const cloneAll = scroller.cloneNode(true)
+      dropChrome(cloneAll, normalizeOptions({}))
+      const all = {
+        clock: cloneAll.querySelectorAll('[data-clock]').length,
+        step: cloneAll.querySelectorAll('[data-step-process]').length,
+        files: cloneAll.querySelectorAll('[data-message-attachments]').length,
+        nav: cloneAll.querySelectorAll('nav').length,
+        handle: cloneAll.querySelectorAll('[data-width-handle]').length,
+        bottom: cloneAll.querySelectorAll('.toBottomSlot').length,
+      }
+      check('defaults drop the clock, nav, handles and the bottom button', all.clock === 0 && all.nav === 0 && all.handle === 0 && all.bottom === 0, JSON.stringify(all))
+      check('defaults keep the thinking row and the attachments', all.step === 1 && all.files === 1, JSON.stringify(all))
+
+      const cloneKept = scroller.cloneNode(true)
+      dropChrome(cloneKept, normalizeOptions({ hideClock: false, hideProcess: false, hideAttachments: false }))
+      const kept = {
+        clock: cloneKept.querySelectorAll('[data-clock]').length,
+        step: cloneKept.querySelectorAll('[data-step-process]').length,
+        files: cloneKept.querySelectorAll('[data-message-attachments]').length,
+      }
+      check('the switches keep what they name', kept.clock === 2 && kept.step === 1 && kept.files === 1, JSON.stringify(kept))
+
+      // --- the inserted blocks, in the order a capture builds them -------------------------------
+      // The clone is measured while attached, exactly as the capture does it: a detached subtree has no
+      // layout, so every rect reads zero and the crop would look correct by accident.
+      const holder = document.createElement('div')
+      holder.style.cssText = 'position:fixed;top:0;left:0;width:720px;opacity:0;pointer-events:none;'
+      document.body.appendChild(holder)
+
+      const clone = scroller.cloneNode(true)
+      const options = normalizeOptions({ title: '标题 {turns}', footer: '页脚', align: 'center' })
+      dropChrome(clone, options)
+      clone.querySelector('[data-chat-history]')?.remove()
+      clone.style.height = 'auto'
+      clone.style.overflow = 'visible'
+      holder.appendChild(clone)
+      const blocks = insertBlocks(clone, options, insertMeta(new Date(2026, 10, 25, 9, 5), 2))
+      const names = Array.from(clone.children).map((el) => el.tagName + (el.getAttribute('data-dsh-screenshot-head') ? ':head' : el.getAttribute('data-dsh-screenshot-foot') ? ':foot' : ''))
+      check('the header is the first block', clone.firstElementChild === blocks.head, names.join(' '))
+      check('the footer is the last block', clone.lastElementChild === blocks.foot, names.join(' '))
+      check('the header fills the reader\'s placeholders', blocks.head?.textContent.includes('标题 2') === true, blocks.head?.textContent ?? 'null')
+      check('the meta line follows the text', blocks.foot?.textContent.includes('2 轮对话') === true, blocks.foot?.textContent ?? 'null')
+      check('an unknown token survives', fillTokens('{nope}', insertMeta(new Date(), 0)) === '{nope}', 'eaten')
+
+      // The crop has to start above the first turn when a header was added, and reach past the footer.
+      const box = clone.getBoundingClientRect()
+      const headTop = blocks.head.getBoundingClientRect().top - box.top
+      const footBottom = blocks.foot.getBoundingClientRect().bottom - box.top
+      const firstTurnTop = clone.querySelector('[data-chat-turn]').getBoundingClientRect().top - box.top
+      check('the header sits above the first turn', headTop < firstTurnTop, `head ${Math.round(headTop)} turn ${Math.round(firstTurnTop)}`)
+      check('the footer sits below the last turn', footBottom > firstTurnTop, `foot ${Math.round(footBottom)}`)
+
+      const crop = planCrop({
+        measured: clone.scrollHeight,
+        scrollerTop: 0,
+        firstTurnTop: Math.min(firstTurnTop, headTop),
+        lastTurnBottom: 0,
+        contentBottom: footBottom,
+      })
+      check('the crop starts at the header, not at the first turn', crop.top === 0, `top ${crop.top} head ${Math.round(headTop)} turn ${Math.round(firstTurnTop)}`)
+      check('the crop reaches the footer', Math.round(crop.bottom) >= Math.round(footBottom), `bottom ${Math.round(crop.bottom)} foot ${Math.round(footBottom)}`)
+
+      holder.remove()
+
+      window.__verify = results
+      document.title = results.every((entry) => entry.ok) ? 'PASS' : 'FAIL'
+    </script>
+  </body>
+</html>

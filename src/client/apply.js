@@ -1,9 +1,10 @@
 /**
- * Registration: the locale tables, the stylesheet, and the two capture entries.
+ * Registration: the locale tables, the stylesheet, the settings section, and the two capture entries.
  *
- * Both entries ask for nothing but slots and locale. The capture reads the page's own DOM and writes
- * the clipboard or a file, so this bundle adds no host route, no settings section and no stored
- * state; unloading it removes the stylesheet and the dictionaries it registered.
+ * The entries ask for nothing but slots and locale. The capture reads the page's own DOM and writes
+ * the clipboard or a file; the settings section writes one preference object into the page's own
+ * storage, so this bundle still adds no host route, no host `Config` and no host-side state, and
+ * unloading it removes the stylesheet, the dictionaries and the section it registered.
  */
 
 import { h } from './shell/runtime.js'
@@ -12,12 +13,15 @@ import { installStyle } from './shell/style.js'
 import { captureConversation } from './dom/capture.js'
 import { captureTurn } from './dom/turn.js'
 import { ScreenshotButton, TurnScreenshotButton } from './views/buttons.js'
+import { SettingsSection } from './views/settings.js'
 /** Services this bundle cannot work without. */
 export const inject = ['slots', 'locale']
 
 /** The entry sits at the right end of the composer tool row. */
 export const WHOLE_SLOT = 'conversation.input.right'
 export const TURN_SLOT = 'conversation.chat.assistant-actions'
+/** The panel the settings page mounts in; its `label` is the navigation entry's name. */
+export const SETTINGS_SLOT = 'settings.section'
 
 /**
  * @param ctx - client root context
@@ -45,6 +49,20 @@ export function apply(ctx) {
         order: 0,
       },
       TurnScreenshotButton,
+    ),
+  )
+
+  // The settings page: the label is resolved by the shell on every locale switch, so the navigation
+  // entry follows the active language without a reload.
+  ctx.slots.inject(SETTINGS_SLOT, () =>
+    ctx.slots.register(
+      {
+        name: SETTINGS_SLOT,
+        id: 'chat-screenshot',
+        order: 45,
+        label: () => translate('settings.title'),
+      },
+      SettingsSection,
     ),
   )
 

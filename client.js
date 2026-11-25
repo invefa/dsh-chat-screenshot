@@ -77,16 +77,58 @@ window.__ModuleLoader__.load({
       'data-dsh-screenshot-skip',
     ]
 
-    /** Own labels of the paging control, lower case. Matched against the control's own text only. */
-    const LOAD_OLDER_LABELS = [
-      '加载更早',
-      '载入更早',
-      '加载历史',
-      'load older',
-      'load earlier',
-      'older messages',
-      'earlier messages',
+    /**
+     * The paging control's own labels, lower case, grouped by the state they report.
+     *
+     * The host renders one button that carries all five labels at once and hides the inactive ones with
+     * `aria-hidden` and a class, so the control's text content is the concatenation of every state. The
+     * label therefore has to be read from the visible subtree, and the state has to be classified: the
+     * control stays mounted after the last page, it only turns `disabled` and switches to `start`, which
+     * is why "the control unmounted" is not the end of the history.
+     */
+    const PAGING_STATES = [
+      {
+        state: 'more',
+        labels: [
+          '加载更早',
+          '载入更早',
+          '加载历史',
+          'load older',
+          'load earlier',
+          'older messages',
+          'earlier messages',
+        ],
+      },
+      { state: 'retry', labels: ['重新加载', '重试加载', 'retry loading'] },
+      {
+        state: 'busy',
+        labels: ['正在加载', '正在载入', '加载中', 'loading earlier', 'loading older', 'processing', '正在处理'],
+      },
+      {
+        state: 'start',
+        labels: ['已到会话开头', '会话开头', 'start of conversation', 'start of chat', 'beginning of conversation'],
+      },
     ]
+
+    /** Padding presets offered in the settings, in CSS pixels. */
+    const EDGE_CHOICES = [8, 24, 40]
+
+    /** Scale factors offered in the settings; `auto` keeps the largest factor the canvas budget allows. */
+    const SCALE_CHOICES = ['auto', '1', '2', '3']
+
+    /** Text alignment of the inserted header and footer. */
+    const ALIGN_CHOICES = ['left', 'center']
+
+    /** Longest user text kept for the inserted blocks, in characters, so one paste cannot flood a picture. */
+    const INSERT_MAX_CHARS = { title: 120, subtitle: 160, footer: 200 }
+
+    /**
+     * Host markers for the subtrees the settings can hide. Each is matched by attribute, never by one of
+     * its values: the host reuses the same marker for both sides of an exchange.
+     */
+    const PROCESS_ATTRIBUTE = 'data-turn-process'
+    const STEP_PROCESS_ATTRIBUTE = 'data-step-process'
+    const ATTACHMENTS_ATTRIBUTE = 'data-message-attachments'
 
     /** Theme tokens consulted for the page background, in order. */
     const BACKGROUND_TOKENS = ['--dsw-alias-bg-base', '--dsw-alias-bg-layer-1']
@@ -94,6 +136,10 @@ window.__ModuleLoader__.load({
     /** Marks the staged clone and its holder, so both can be found and removed again. */
     const STAGE_ATTRIBUTE = 'data-dsh-screenshot-stage'
     const HOLDER_ATTRIBUTE = 'data-dsh-screenshot-holder'
+
+    /** Marks the blocks the settings can add above and below the transcript. */
+    const HEAD_ATTRIBUTE = 'data-dsh-screenshot-head'
+    const FOOT_ATTRIBUTE = 'data-dsh-screenshot-foot'
 
     /** Host markers the crop and the turn band are read from. */
     const SCROLL_ATTRIBUTE = 'data-conversation-scroll'
@@ -161,6 +207,167 @@ window.__ModuleLoader__.load({
       return react.useState(value)
     }
 
+    // ===== shell/options.js ==========================================
+
+    /**
+     * What the picture contains, as the reader chose it, and where that choice is kept.
+     *
+     * The preference is one small JSON object in the page's own storage. The plugin still declares no
+     * host `Config` and no host-side state: nothing has to be registered with the app, no restart is
+     * involved, and unloading the plugin leaves one inert key behind. Every read goes through
+     * `normalizeOptions`, so a hand-edited or half-written value can only ever select one of the offered
+     * presets — the capture never has to defend itself against it.
+     */
+
+    /** Storage key owned by this plugin. */
+    const STORAGE_KEY = 'chat-screenshot.options'
+
+    /** The switches that drop a host subtree from the picture. */
+    const HIDE_FLAGS = [
+      'hideClock',
+      'hideProcess',
+      'hideAttachments',
+      'hideNav',
+      'hideHandles',
+      'hideToBottom',
+    ]
+
+    /** The free-text blocks the picture can carry, with the length each one is capped at. */
+    const TEXT_FIELDS = [
+      ['title', INSERT_MAX_CHARS.title],
+      ['subtitle', INSERT_MAX_CHARS.subtitle],
+      ['footer', INSERT_MAX_CHARS.footer],
+    ]
+
+    /** What a capture shows when the reader has never opened the settings page. */
+    const OPTION_DEFAULTS = Object.freeze({
+      hideClock: true,
+      hideProcess: false,
+      hideAttachments: false,
+      hideNav: true,
+      hideHandles: true,
+      hideToBottom: true,
+      title: '',
+      subtitle: '',
+      footer: '',
+      showMeta: false,
+      divider: true,
+      align: 'left',
+      edge: EDGE_PADDING,
+      scale: 'auto',
+    })
+
+    /** The nearest offered preset, so a stored value outside the list still lands on a real one. */
+    function nearestEdge(value) {
+      const number = Number(value)
+      if (!Number.isFinite(number)) return OPTION_DEFAULTS.edge
+      return EDGE_CHOICES.reduce((best, choice) =>
+        Math.abs(choice - number) < Math.abs(best - number) ? choice : best,
+      )
+    }
+
+    /** Clamp one stored value onto the shape the capture understands. */
+    function normalizeOptions(raw) {
+      const source = raw !== null && typeof raw === 'object' ? raw : {}
+      const next = { ...OPTION_DEFAULTS }
+      for (const flag of HIDE_FLAGS) {
+        if (typeof source[flag] === 'boolean') next[flag] = source[flag]
+      }
+      for (const [field, limit] of TEXT_FIELDS) {
+        const value = source[field]
+        if (typeof value === 'string') next[field] = value.replace(/\s+/g, ' ').trim().slice(0, limit)
+      }
+      if (typeof source.showMeta === 'boolean') next.showMeta = source.showMeta
+      if (typeof source.divider === 'boolean') next.divider = source.divider
+      if (ALIGN_CHOICES.includes(source.align)) next.align = source.align
+      if (SCALE_CHOICES.includes(source.scale)) next.scale = source.scale
+      next.edge = nearestEdge(source.edge)
+      return next
+    }
+
+    /** Whether the chosen options put anything above or below the transcript. */
+    function hasInserts(options) {
+      return options.title !== '' || options.subtitle !== '' || options.footer !== '' || options.showMeta
+    }
+
+    /** The page's storage, or null when the browser refuses it (private mode, disabled storage). */
+    function storage() {
+      try {
+        if (typeof window === 'undefined') return null
+        return window.localStorage ?? null
+      } catch {
+        return null
+      }
+    }
+
+    let cached = null
+    const listeners = new Set()
+
+    function readStored() {
+      const store = storage()
+      if (store === null) return null
+      try {
+        const text = store.getItem(STORAGE_KEY)
+        return text === null ? null : JSON.parse(text)
+      } catch {
+        return null
+      }
+    }
+
+    function persist(options) {
+      const store = storage()
+      if (store === null) return
+      try {
+        store.setItem(STORAGE_KEY, JSON.stringify(options))
+      } catch {
+        // A full or read-only storage only costs persistence; the capture uses the in-memory value.
+      }
+    }
+
+    function emit() {
+      for (const listener of [...listeners]) listener()
+    }
+
+    /** The active options. Identity is stable while nothing changes, which is what React subscribes to. */
+    function readOptions() {
+      if (cached === null) cached = normalizeOptions(readStored())
+      return cached
+    }
+
+    /** Merge one change into the stored options and tell every reader. */
+    function writeOptions(patch) {
+      cached = normalizeOptions({ ...readOptions(), ...patch })
+      persist(cached)
+      emit()
+      return cached
+    }
+
+    /** Drop the stored object and fall back to the defaults. */
+    function resetOptions() {
+      const store = storage()
+      if (store !== null) {
+        try {
+          store.removeItem(STORAGE_KEY)
+        } catch {
+          // Same as a refused write: the defaults still apply for this session.
+        }
+      }
+      cached = normalizeOptions(null)
+      emit()
+      return cached
+    }
+
+    /** Subscribe to changes; hands back the unsubscribe. */
+    function subscribeOptions(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    }
+
+    /** The options in a component, re-rendered on every change. */
+    function useOptions() {
+      return react.useSyncExternalStore(subscribeOptions, readOptions, readOptions)
+    }
+
     // ===== shell/i18n.js =============================================
 
     /**
@@ -193,6 +400,52 @@ window.__ModuleLoader__.load({
         'state.empty': '当前会话还没有可截图的内容',
         'state.turnMissing': '没有找到这一轮的范围，刷新页面后重试',
         'state.failed': '截图失败：{message}',
+        'insert.meta': '{turns} 轮对话 · {date} {time}',
+        'settings.title': '对话截图',
+        'settings.intro': '控制截图里保留哪些控件、额外加上哪些文字，以及图片的排布。设置即刻生效，立即保存在本机。',
+        'settings.group.hide': '隐藏的控件',
+        'settings.group.add': '加入的内容',
+        'settings.group.layout': '排布',
+        'settings.hide.clock': '时钟与操作行',
+        'settings.hide.clockHint': '每轮末尾的时间、用量与复制按钮',
+        'settings.hide.process': '思考与工具过程',
+        'settings.hide.processHint': '模型推理与工具调用的折叠块',
+        'settings.hide.attachments': '用户附件条',
+        'settings.hide.attachmentsHint': '用户消息里的文件名与缩略图',
+        'settings.hide.nav': '轮次导航',
+        'settings.hide.navHint': '右边缘的轮次刻度条',
+        'settings.hide.handles': '拖拽手柄与占位',
+        'settings.hide.handlesHint': '调整宽度的手柄与分页留白',
+        'settings.hide.toBottom': '回到底部按钮',
+        'settings.hide.toBottomHint': '浮在右下角的那个按钮',
+        'settings.add.title': '标题',
+        'settings.add.titleHint': '显示在截图顶部，可用 {turns}、{date}、{time}',
+        'settings.add.titlePlaceholder': '例如：会话整理',
+        'settings.add.subtitle': '副标题',
+        'settings.add.subtitleHint': '标题下方的一行说明',
+        'settings.add.footer': '页脚',
+        'settings.add.footerHint': '显示在截图底部',
+        'settings.add.meta': '页脚信息行',
+        'settings.add.metaHint': '在页脚加入轮次数与截图时间',
+        'settings.add.divider': '分隔线',
+        'settings.add.dividerHint': '在标题下方与页脚上方画一条细线',
+        'settings.layout.align': '文字对齐',
+        'settings.layout.alignHint': '标题与页脚的对齐方式',
+        'settings.align.left': '左对齐',
+        'settings.align.center': '居中',
+        'settings.layout.edge': '边距',
+        'settings.layout.edgeHint': '内容与画布边缘之间的留白',
+        'settings.edge.tight': '紧凑',
+        'settings.edge.normal': '标准',
+        'settings.edge.loose': '宽松',
+        'settings.layout.scale': '清晰度',
+        'settings.layout.scaleHint': '自动会取画布上限允许的最大倍数；固定倍数不会超过该上限',
+        'settings.scale.auto': '自动',
+        'settings.scale.x1': '1 倍',
+        'settings.scale.x2': '2 倍',
+        'settings.scale.x3': '3 倍',
+        'settings.reset': '恢复默认',
+        'settings.resetHint': '清除已保存的选项并回到默认',
       },
       en: {
         'action.whole': 'Chat screenshot',
@@ -210,6 +463,54 @@ window.__ModuleLoader__.load({
         'state.empty': 'Nothing to capture in this conversation yet',
         'state.turnMissing': 'Could not resolve this turn, reload the page and try again',
         'state.failed': 'Screenshot failed: {message}',
+        'insert.meta': 'Turns: {turns} · {date} {time}',
+        'settings.title': 'Chat screenshot',
+        'settings.intro':
+          'Choose which chrome the picture keeps, which text it adds, and how it is laid out. Changes apply to the next capture and are stored on this machine.',
+        'settings.group.hide': 'Hidden chrome',
+        'settings.group.add': 'Added content',
+        'settings.group.layout': 'Layout',
+        'settings.hide.clock': 'Clock and action row',
+        'settings.hide.clockHint': 'Time, usage and copy controls at the end of each turn',
+        'settings.hide.process': 'Thinking and tool steps',
+        'settings.hide.processHint': 'Collapsed reasoning and tool-call blocks',
+        'settings.hide.attachments': 'Attachment strip',
+        'settings.hide.attachmentsHint': 'File names and thumbnails in the user message',
+        'settings.hide.nav': 'Turn navigator',
+        'settings.hide.navHint': 'The tick rail on the right edge',
+        'settings.hide.handles': 'Drag handles and spacers',
+        'settings.hide.handlesHint': 'The width handle and the paging spacer',
+        'settings.hide.toBottom': 'Back-to-bottom button',
+        'settings.hide.toBottomHint': 'The control floating in the lower right',
+        'settings.add.title': 'Title',
+        'settings.add.titleHint': 'Shown above the transcript; supports {turns}, {date} and {time}',
+        'settings.add.titlePlaceholder': 'e.g. Session notes',
+        'settings.add.subtitle': 'Subtitle',
+        'settings.add.subtitleHint': 'One line under the title',
+        'settings.add.footer': 'Footer',
+        'settings.add.footerHint': 'Shown under the transcript',
+        'settings.add.meta': 'Footer meta line',
+        'settings.add.metaHint': 'Add the turn count and the capture time to the footer',
+        'settings.add.divider': 'Dividers',
+        'settings.add.dividerHint': 'Draw a hairline under the title and above the footer',
+        'settings.layout.align': 'Text alignment',
+        'settings.layout.alignHint': 'Alignment of the added title and footer',
+        'settings.align.left': 'Left',
+        'settings.align.center': 'Center',
+        'settings.layout.edge': 'Margin',
+        'settings.layout.edgeHint': 'Space between the content and the canvas edge',
+        'settings.edge.tight': 'Tight',
+        'settings.edge.normal': 'Normal',
+        'settings.edge.loose': 'Wide',
+        'settings.layout.scale': 'Resolution',
+        'settings.layout.scaleHint':
+          'Auto takes the largest factor the canvas budget allows; a fixed factor never exceeds it',
+        'settings.scale.auto': 'Auto',
+        'settings.scale.x1': '1x',
+        'settings.scale.x2': '2x',
+        'settings.scale.x3': '3x',
+        'settings.reset': 'Reset to defaults',
+        'settings.resetHint': 'Forget the saved options and return to the defaults',
       },
     }
 
@@ -336,6 +637,108 @@ window.__ModuleLoader__.load({
       box-shadow: 0 6px 20px rgba(0, 0, 0, .18);
       z-index: 30;
       pointer-events: none;
+    }
+    .cs-set {
+      display: flex;
+      flex-direction: column;
+      padding: 4px 0 8px;
+      font-size: 13px;
+      color: var(--dsw-alias-label-primary);
+    }
+    .cs-set-intro {
+      margin: 0 0 10px;
+      font-size: 12px;
+      line-height: 20px;
+      color: var(--dsw-alias-label-secondary);
+    }
+    .cs-set-group {
+      margin: 16px 0 2px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--dsw-alias-label-secondary);
+    }
+    .cs-set-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--dsw-alias-border-l1);
+    }
+    .cs-set-row-stack {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+    .cs-set-row-check {
+      cursor: pointer;
+    }
+    .cs-set-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .cs-set-label {
+      font-size: 13px;
+      line-height: 20px;
+      color: var(--dsw-alias-label-primary);
+    }
+    .cs-set-desc {
+      font-size: 12px;
+      line-height: 18px;
+      color: var(--dsw-alias-label-secondary);
+    }
+    .cs-set-box {
+      flex: none;
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: var(--dsw-alias-brand-primary);
+    }
+    .cs-set-input,
+    .cs-set-select {
+      box-sizing: border-box;
+      width: 100%;
+      max-width: 320px;
+      height: 30px;
+      padding: 0 8px;
+      border: 1px solid var(--dsw-alias-border-l2);
+      border-radius: 8px;
+      background: var(--dsw-alias-bg-layer-1);
+      color: var(--dsw-alias-label-primary);
+      font-size: 13px;
+    }
+    .cs-set-select {
+      max-width: 160px;
+    }
+    .cs-set-input:focus-visible,
+    .cs-set-select:focus-visible {
+      outline: 2px solid var(--dsw-alias-brand-primary);
+      outline-offset: 1px;
+    }
+    .cs-set-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--dsw-alias-border-l1);
+    }
+    .cs-set-reset {
+      flex: none;
+      height: 28px;
+      padding: 0 12px;
+      border: 1px solid var(--dsw-alias-border-l2);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--dsw-alias-label-primary);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .cs-set-reset:hover {
+      background: var(--dsw-alias-bg-layer-2);
     }
     `
 
@@ -1367,25 +1770,46 @@ window.__ModuleLoader__.load({
 
     /**
      * Drop the transcript's chrome from the clone: the turn navigator rail, drag handles, the paging
-     * spacer and the per-turn metadata row. Cropping cannot remove these because they sit in the
-     * transcript's flow; they are deleted by marker instead.
+     * spacer, the per-turn metadata row and whatever else the reader chose to leave out. Cropping cannot
+     * remove these because they sit in the transcript's flow; they are deleted by marker instead.
+     *
+     * @param clone - the staged copy.
+     * @param options - the reader's switches; a missing option falls back to the default.
      */
-    function dropChrome(clone) {
+    function dropChrome(clone, options = OPTION_DEFAULTS) {
       // The turn navigator is a `nav` rail pinned to the transcript's right edge: a stack of tick marks,
       // one per turn. It is chrome, and it shrinks with the band, so a short capture left a few ticks
       // beside the content. Every `nav` in the clone is chrome, because message markdown cannot produce
       // one; the earlier size test left the short rail behind.
-      for (const nav of clone.querySelectorAll('nav')) nav.remove()
-      for (const handle of clone.querySelectorAll(`[${WIDTH_HANDLE_ATTRIBUTE}]`)) handle.remove()
-      for (const spacer of clone.querySelectorAll(`[${TURN_SPACER_ATTRIBUTE}]`)) spacer.remove()
+      if (options.hideNav) {
+        for (const nav of clone.querySelectorAll('nav')) nav.remove()
+      }
+      if (options.hideHandles) {
+        for (const handle of clone.querySelectorAll(`[${WIDTH_HANDLE_ATTRIBUTE}]`)) handle.remove()
+        for (const spacer of clone.querySelectorAll(`[${TURN_SPACER_ATTRIBUTE}]`)) spacer.remove()
+      }
       // Every turn ends with a metadata row: clock, per-turn usage, and the hover-only action icons.
       // The host marks both rows with data-clock, the user's message with "start" and the answer with
       // "end"; both are chrome, and a capture of a conversation does not need the time of day.
-      for (const row of clone.querySelectorAll(`[${CLOCK_ROW_ATTRIBUTE}]`)) row.remove()
+      if (options.hideClock) {
+        for (const row of clone.querySelectorAll(`[${CLOCK_ROW_ATTRIBUTE}]`)) row.remove()
+      }
+      // Thinking and tool rows: one collapsed disclosure per step. They are part of the exchange, so they
+      // stay unless the reader asks for the answer alone.
+      if (options.hideProcess) {
+        for (const row of clone.querySelectorAll(`[${PROCESS_ATTRIBUTE}], [${STEP_PROCESS_ATTRIBUTE}]`)) {
+          row.remove()
+        }
+      }
+      if (options.hideAttachments) {
+        for (const row of clone.querySelectorAll(`[${ATTACHMENTS_ATTRIBUTE}]`)) row.remove()
+      }
       // The "back to bottom" button floats over the transcript's lower right corner once the reader has
       // scrolled away from the tail. It belongs to browsing, not to the conversation, and a capture is
       // always taken with the whole transcript laid out, so the control has no place in the picture.
-      for (const slot of clone.querySelectorAll(TO_BOTTOM_SLOT)) slot.remove()
+      if (options.hideToBottom) {
+        for (const slot of clone.querySelectorAll(TO_BOTTOM_SLOT)) slot.remove()
+      }
     }
 
     // ===== dom/band.js ===============================================
@@ -1433,29 +1857,101 @@ window.__ModuleLoader__.load({
     /**
      * Draining the transcript's history before the picture is taken.
      *
-     * Paging is driven from the chat view's own control. A page can take several seconds to land and
-     * the host's prepend pipeline can fail one fetch while later ones succeed, so the control is
-     * re-clicked every few seconds — the way a person drains the history — until it unmounts. That is
-     * also why the result is reported honestly: when the budget runs out the caller says "loaded turns
-     * only" instead of claiming a full capture.
+     * Paging is driven from the chat view's own control. A page can take several seconds to land and the
+     * host's prepend pipeline can fail one fetch while later ones succeed, so the control is re-clicked
+     * while it reports that older pages exist. The control does not unmount when the history runs out: it
+     * stays in the layout, turns `disabled` and swaps its visible label for "start of conversation". That
+     * distinction is the whole point of `readPaging` — reading only "is there a control" clicked a
+     * disabled button for the length of the budget while the entry claimed it was still loading, which is
+     * exactly what a reader saw when the picture never arrived.
      */
 
+    /** Longest label the control may carry and still count as the paging control. */
+    const MAX_LABEL = 24
+
     /**
-     * The paging control, never transcript prose that merely mentions paging: one real control whose
-     * own label is essentially the paging wording.
+     * The text a reader actually sees: subtrees the host marks `aria-hidden` (or hides outright) carry
+     * the four labels the button is not showing, so a plain `textContent` reads all five at once.
      */
-    function findLoadOlder(root) {
+    function visibleLabel(element) {
+      const parts = []
+      const walk = (node) => {
+        if (node.nodeType === 3) {
+          parts.push(node.nodeValue ?? '')
+          return
+        }
+        if (node.nodeType !== 1) return
+        if (node.getAttribute('aria-hidden') === 'true' || node.hidden === true) return
+        for (const child of node.childNodes) walk(child)
+      }
+      walk(element)
+      return parts
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase()
+    }
+
+    /**
+     * The state one label reports, or null when the text is something else entirely.
+     *
+     * The comparison is exact. A prefix test read the five concatenated labels as "load more" and kept
+     * clicking a control that had nothing left to fetch; the labels the host renders are fixed strings, so
+     * there is nothing a prefix would buy.
+     */
+    function classifyPaging(label) {
+      if (label === '' || label.length > MAX_LABEL) return null
+      for (const entry of PAGING_STATES) {
+        if (entry.labels.includes(label)) return entry.state
+      }
+      return null
+    }
+
+    /**
+     * The paging control and the state it reports, or null when the transcript shows no such control.
+     * @returns {{ control: Element, state: string, disabled: boolean } | null}
+     */
+    function readPaging(root) {
       for (const candidate of root.querySelectorAll('button, [role="button"]')) {
-        const own = `${candidate.textContent ?? ''} ${candidate.getAttribute('aria-label') ?? ''}`
-          .replace(/\s+/g, ' ')
-          .trim()
-          .toLowerCase()
-        if (own === '' || own.length > 24) continue
-        if (LOAD_OLDER_LABELS.some((needle) => own === needle || own.startsWith(needle))) {
-          return candidate
+        const label = visibleLabel(candidate)
+        if (label === '' || label.length > MAX_LABEL) continue
+        const state = classifyPaging(label)
+        if (state === null) continue
+        const flag = candidate.getAttribute('aria-disabled')
+        return {
+          control: candidate,
+          state,
+          disabled: candidate.disabled === true || flag === 'true',
         }
       }
       return null
+    }
+
+    /**
+     * The control to click, or null when nothing older is waiting to be fetched. A disabled control and
+     * the `start` state both mean the history is complete, so neither is offered as a click target.
+     *
+     * A control that reports `busy` is not a click target either: the host is already fetching a page,
+     * and clicking again lands a second request on top of the first one.
+     */
+    function findLoadOlder(root) {
+      const paging = readPaging(root)
+      if (paging === null || paging.disabled || paging.state === 'start') return null
+      if (paging.state === 'busy') return null
+      return paging.control
+    }
+
+    /**
+     * Whether older pages still exist, whether or not they can be fetched right now.
+     *
+     * This is the question a capture asks before announcing "loading earlier messages": a control that is
+     * busy or waiting to retry means the transcript is still incomplete, while a disabled one carrying the
+     * `start` label means there is nothing above the first turn.
+     */
+    function hasOlderPages(root) {
+      const paging = readPaging(root)
+      if (paging === null || paging.disabled || paging.state === 'start') return false
+      return true
     }
 
     /** Resolve once the scrollport stops changing, or the budget runs out. */
@@ -1479,20 +1975,21 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Wait for one paging click to take effect: the transcript grows or the app unmounts the control to
-     * report nothing older. The chat view can take several seconds to land a page from the host — far
-     * longer than any layout-settling window, so a stability wait alone reads "still loading" as "no
-     * more pages".
+     * Wait for one paging click to take effect: the transcript grows, or the control reports the start of
+     * the conversation. The chat view can take several seconds to land a page from the host — far longer
+     * than any layout-settling window, so a stability wait alone reads "still loading" as "no more
+     * pages".
      * @returns 'grown' | 'exhausted' | 'timeout'
      */
     async function waitForPageEffect(root, scroller, heightBefore, timeout) {
       const deadline = Date.now() + timeout
       for (;;) {
-        if (findLoadOlder(root) === null) {
+        if (scroller.scrollHeight > heightBefore) return 'grown'
+        const paging = readPaging(root)
+        if (paging === null || paging.disabled || paging.state === 'start') {
           await waitForStableHeight(scroller, 4000)
           return 'exhausted'
         }
-        if (scroller.scrollHeight > heightBefore) return 'grown'
         if (Date.now() > deadline) return 'timeout'
         await new Promise((resolve) => setTimeout(resolve, STABLE_TICK_MS))
       }
@@ -1515,10 +2012,12 @@ window.__ModuleLoader__.load({
       let rounds = 0
       try {
         while (Date.now() < deadline) {
-          const control = findLoadOlder(root)
-          if (control === null) return true
+          const paging = readPaging(root)
+          // Nothing left to fetch: no control, a disabled one, or the control's own "start" label.
+          if (paging === null || paging.disabled || paging.state === 'start') return true
           const before = scroller.scrollHeight
-          control.click()
+          // A page already in flight is not clicked again; the click that started it is being awaited.
+          if (paging.state !== 'busy') paging.control.click()
           const effect = await waitForPageEffect(root, scroller, before, PAGE_EFFECT_TIMEOUT)
           if (effect === 'exhausted') return true
           if (effect === 'grown') {
@@ -1532,6 +2031,124 @@ window.__ModuleLoader__.load({
       } finally {
         scroller.scrollTop = restoreTop
       }
+    }
+
+    // ===== dom/inserts.js ============================================
+
+    /**
+     * The blocks the settings can add above and below the transcript: a title, a subtitle, a footer and
+     * the one metadata line that says how much of the conversation the picture holds.
+     *
+     * They are built inside the staged clone, not around it: both renderers read the clone and the SVG
+     * path serializes only that element, so a header mounted next to it would be laid out and then left
+     * out of the picture.
+     *
+     * Colours are literal greys on purpose. `var(--dsw-alias-*)` resolves in the live page, which is what
+     * the hand painter reads, but the serialized SVG document has no theme root to resolve against, so a
+     * token here would draw one way through the fallback and another through the main path. A neutral grey
+     * reads on both light and dark transcripts; the body text keeps `color: inherit`, so it follows the
+     * transcript in either theme.
+     */
+
+    /** Muted copy and hairline rules, chosen to stay legible on a light and on a dark transcript. */
+    const MUTED = '#8c8c8c'
+    const RULE = 'rgba(128, 128, 128, .32)'
+
+    /** Two decimal digits, so a meta line never jumps in width between 9 and 10. */
+    function pad(value) {
+      return String(value).padStart(2, '0')
+    }
+
+    /**
+     * The values `{date}`, `{time}` and `{turns}` stand for, taken at capture time.
+     * @param {Date} now - the moment the picture is taken.
+     * @param {number} turns - how many exchanges the picture covers.
+     */
+    function insertMeta(now, turns) {
+      return {
+        turns: Math.max(0, Math.round(turns)),
+        date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+        time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+      }
+    }
+
+    /** Substitute the placeholders a reader may write into a title or a footer. */
+    function fillTokens(text, meta) {
+      return text
+        .replace(/\{turns\}/g, String(meta.turns))
+        .replace(/\{date\}/g, meta.date)
+        .replace(/\{time\}/g, meta.time)
+    }
+
+    /** One block of text with the geometry both renderers agree on. */
+    function paragraph(doc, text, style, align) {
+      const node = doc.createElement('div')
+      node.textContent = text
+      node.style.cssText = `display:block;text-align:${align};white-space:pre-wrap;word-break:break-word;${style}`
+      return node
+    }
+
+    /** The header block, or null when the reader asked for neither a title nor a subtitle. */
+    function buildHead(doc, options, meta) {
+      const title = fillTokens(options.title, meta)
+      const subtitle = fillTokens(options.subtitle, meta)
+      if (title === '' && subtitle === '') return null
+      const box = doc.createElement('div')
+      box.setAttribute(HEAD_ATTRIBUTE, 'true')
+      box.style.cssText =
+        `display:block;box-sizing:border-box;padding:2px 0 ${options.divider ? 16 : 12}px;` +
+        `text-align:${options.align};` +
+        (options.divider ? `border-bottom:1px solid ${RULE};` : '')
+      if (title !== '') {
+        box.appendChild(
+          paragraph(doc, title, 'font-size:17px;line-height:24px;font-weight:600;color:inherit;', options.align),
+        )
+      }
+      if (subtitle !== '') {
+        box.appendChild(
+          paragraph(doc, subtitle, `margin-top:4px;font-size:13px;line-height:20px;color:${MUTED};`, options.align),
+        )
+      }
+      return box
+    }
+
+    /** The footer block, or null when the reader asked for neither a footer nor the metadata line. */
+    function buildFoot(doc, options, meta) {
+      const footer = fillTokens(options.footer, meta)
+      if (footer === '' && !options.showMeta) return null
+      const box = doc.createElement('div')
+      box.setAttribute(FOOT_ATTRIBUTE, 'true')
+      box.style.cssText =
+        `display:block;box-sizing:border-box;padding:${options.divider ? 16 : 12}px 0 2px;` +
+        `text-align:${options.align};` +
+        (options.divider ? `border-top:1px solid ${RULE};` : '')
+      if (footer !== '') {
+        box.appendChild(
+          paragraph(doc, footer, 'font-size:13px;line-height:20px;color:inherit;', options.align),
+        )
+      }
+      if (options.showMeta) {
+        const meta1 = translate('insert.meta', { turns: meta.turns, date: meta.date, time: meta.time })
+        box.appendChild(
+          paragraph(doc, meta1, `margin-top:4px;font-size:12px;line-height:18px;color:${MUTED};`, options.align),
+        )
+      }
+      return box
+    }
+
+    /**
+     * Put both blocks in place inside the clone and hand them back for measuring.
+     * @returns {{ head: Element | null, foot: Element | null }}
+     */
+    function insertBlocks(clone, options, meta) {
+      const flow =
+        (clone.hasAttribute(SCROLL_ATTRIBUTE) ? clone : clone.querySelector(`[${SCROLL_ATTRIBUTE}]`)) ?? clone
+      const doc = clone.ownerDocument
+      const head = buildHead(doc, options, meta)
+      const foot = buildFoot(doc, options, meta)
+      if (head !== null) flow.insertBefore(head, flow.firstChild)
+      if (foot !== null) flow.appendChild(foot)
+      return { head, foot }
     }
 
     // ===== dom/turn.js ===============================================
@@ -1704,15 +2321,24 @@ window.__ModuleLoader__.load({
       doc.body.appendChild(holder)
 
       try {
+        const options = readOptions()
+        // Pairing first: `sanitizeClone` walks the live tree and the clone in step by child index, so any
+        // pruning done before it shifts the indexes and leaves a deeper video or iframe behind, which the
+        // SVG path then fails to decode.
+        sanitizeClone(app, clone)
         // The composer shares this scroller; `dropSkipped` prunes it at whatever depth the layout puts
         // it, so the seat never reaches the picture.
         dropSkipped(clone)
-        dropChrome(clone)
+        dropChrome(clone, options)
         // The paging control belongs to browsing, not to the transcript. It is dropped from the clone so
         // the picture opens on real content.
         const older = findLoadOlder(clone)
         if (older !== null) older.remove()
         if (pruneClone !== undefined) pruneClone(clone)
+        // The reader's own header and footer go in after the band is pruned, so a one-turn capture carries
+        // them too, and inside the clone, so the SVG serializer sees them.
+        const turns = clone.querySelectorAll(`[${TURN_ATTRIBUTE}]`).length
+        const blocks = insertBlocks(clone, options, insertMeta(new Date(), turns))
         clone.style.setProperty('width', `${width}px`)
         // `width` has to mean the outer box. The app surface's padding is part of `clientWidth`, so
         // under `content-box` the clone grew by its own horizontal padding, which pushed the transcript
@@ -1733,7 +2359,6 @@ window.__ModuleLoader__.load({
           scrollerClone.style.setProperty('max-height', 'none')
           scrollerClone.style.setProperty('overflow', 'visible')
         }
-        sanitizeClone(app, clone)
         // An image inside a reply decodes after the clone is built, and its box only reaches its real
         // height then. Measuring first reported a shorter transcript for exactly those turns and the
         // crop cut their bottom. Wait for the media, then force one synchronous layout so every rect
@@ -1774,11 +2399,19 @@ window.__ModuleLoader__.load({
         }
         // Start the picture at the first turn instead of the scroll port, then give the bottom the same
         // inset. Cutting above the first turn would slice the previous reply in half, so the
-        // transcript's own edge is the cut and the padding comes from both sides in `cropCanvas`.
+        // transcript's own edge is the cut and the padding comes from both sides in `cropCanvas`. A header
+        // the reader added sits above the first turn, so the cut starts at whichever is higher.
+        if (blocks.head !== null) {
+          firstTurnTop = Math.min(firstTurnTop, blocks.head.getBoundingClientRect().top - cloneBox.top)
+        }
         const crop = planCrop({ measured, scrollerTop, firstTurnTop, lastTurnBottom, contentBottom })
         const clipTop = crop.top
         const clipHeight = crop.height
-        const scale = captureScale(canvasWidth, clipHeight)
+        // `auto` keeps the largest factor the canvas budget allows. A fixed preset only ever lowers that
+        // factor: asking for 2x on a transcript that has to be scaled to 0.6x must not overflow the canvas.
+        const autoScale = captureScale(canvasWidth, clipHeight)
+        const wanted = options.scale === 'auto' ? autoScale : Number(options.scale)
+        const scale = Math.max(MIN_SCALE, Math.min(autoScale, Number.isFinite(wanted) ? wanted : autoScale))
         if (DEBUG_MEASURE && typeof console !== 'undefined') {
           console.info('[dsh-screenshot] capture', {
             containerWidth: canvasWidth,
@@ -1791,6 +2424,8 @@ window.__ModuleLoader__.load({
             scale,
             lastTurnBottom: lastTurnBottom > 0 ? Math.round(lastTurnBottom) : null,
             contentBottom: contentBottom > 0 ? Math.round(contentBottom) : null,
+            head: blocks.head !== null,
+            foot: blocks.foot !== null,
             rootClass: typeof app.className === 'string' ? app.className : '',
           })
         }
@@ -1805,7 +2440,7 @@ window.__ModuleLoader__.load({
             top: clipTop,
             width: canvasWidth,
             height: clipHeight,
-            pad: EDGE_PADDING,
+            pad: options.edge,
           },
         })
       } finally {
@@ -2037,7 +2672,9 @@ window.__ModuleLoader__.load({
           if (root.scrollHeight <= 1) throw new Error('empty')
 
           let historyComplete = true
-          if (findLoadOlder(root) !== null) {
+          // A disabled control and the "start of conversation" label both mean the history is already
+          // complete, so the entry never announces a wait it is not going to have.
+          if (hasOlderPages(root)) {
             say(t('state.loadingHistory'), true)
             historyComplete = await loadFullHistory(root)
           }
@@ -2110,14 +2747,241 @@ window.__ModuleLoader__.load({
       })
     }
 
+    // ===== views/settings.js =========================================
+
+    /**
+     * The settings panel: what the picture keeps, what it adds, and how it is laid out.
+     *
+     * One row per decision, the way the host's own settings sections read: a label, a sentence saying what
+     * the switch does, and the control on the right. Every value is written through `writeOptions`, so a
+     * change applies to the next capture and survives a reload without a host round-trip.
+     */
+
+
+    /** One switch: the label and description on the left, the box on the right. */
+    function SwitchRow({ title, description, checked, onChange }) {
+      return h(
+        'label',
+        { className: 'cs-set-row cs-set-row-check' },
+        h(
+          'span',
+          { className: 'cs-set-text' },
+          h('span', { className: 'cs-set-label' }, title),
+          h('span', { className: 'cs-set-desc' }, description),
+        ),
+        h('input', {
+          className: 'cs-set-box',
+          type: 'checkbox',
+          checked,
+          onChange: (event) => onChange(event.target.checked),
+        }),
+      )
+    }
+
+    /**
+     * One free-text block. The field is uncontrolled and reseeded by `seed`, so typing is never fought by
+     * the whitespace trimming the stored value goes through, while a reset still empties it.
+     */
+    function TextRow({ title, description, value, placeholder, onChange, seed }) {
+      return h(
+        'div',
+        { className: 'cs-set-row cs-set-row-stack' },
+        h(
+          'span',
+          { className: 'cs-set-text' },
+          h('span', { className: 'cs-set-label' }, title),
+          h('span', { className: 'cs-set-desc' }, description),
+        ),
+        h('input', {
+          key: `field-${seed}`,
+          className: 'cs-set-input',
+          type: 'text',
+          defaultValue: value,
+          placeholder,
+          onChange: (event) => onChange(event.target.value),
+        }),
+      )
+    }
+
+    /** One choice out of a short list. */
+    function SelectRow({ title, description, value, options, onChange }) {
+      return h(
+        'label',
+        { className: 'cs-set-row' },
+        h(
+          'span',
+          { className: 'cs-set-text' },
+          h('span', { className: 'cs-set-label' }, title),
+          h('span', { className: 'cs-set-desc' }, description),
+        ),
+        h(
+          'select',
+          {
+            className: 'cs-set-select',
+            value,
+            onChange: (event) => onChange(event.target.value),
+          },
+          options.map(([optionValue, optionLabel]) =>
+            h('option', { key: optionValue, value: optionValue }, optionLabel),
+          ),
+        ),
+      )
+    }
+
+    /** The section body mounted at `settings.section`. */
+    function SettingsSection() {
+      const t = useTranslate()
+      const options = useOptions()
+      const [seed, setSeed] = useState(0)
+
+      const edgeLabels = [
+        [String(EDGE_CHOICES[0]), t('settings.edge.tight')],
+        [String(EDGE_CHOICES[1]), t('settings.edge.normal')],
+        [String(EDGE_CHOICES[2]), t('settings.edge.loose')],
+      ]
+      const scaleLabels = [
+        [SCALE_CHOICES[0], t('settings.scale.auto')],
+        [SCALE_CHOICES[1], t('settings.scale.x1')],
+        [SCALE_CHOICES[2], t('settings.scale.x2')],
+        [SCALE_CHOICES[3], t('settings.scale.x3')],
+      ]
+
+      return h(
+        'div',
+        { className: 'cs-set' },
+        h('p', { className: 'cs-set-intro' }, t('settings.intro')),
+
+        h('div', { className: 'cs-set-group' }, t('settings.group.hide')),
+        h(SwitchRow, {
+          title: t('settings.hide.clock'),
+          description: t('settings.hide.clockHint'),
+          checked: options.hideClock,
+          onChange: (value) => writeOptions({ hideClock: value }),
+        }),
+        h(SwitchRow, {
+          title: t('settings.hide.process'),
+          description: t('settings.hide.processHint'),
+          checked: options.hideProcess,
+          onChange: (value) => writeOptions({ hideProcess: value }),
+        }),
+        h(SwitchRow, {
+          title: t('settings.hide.attachments'),
+          description: t('settings.hide.attachmentsHint'),
+          checked: options.hideAttachments,
+          onChange: (value) => writeOptions({ hideAttachments: value }),
+        }),
+        h(SwitchRow, {
+          title: t('settings.hide.nav'),
+          description: t('settings.hide.navHint'),
+          checked: options.hideNav,
+          onChange: (value) => writeOptions({ hideNav: value }),
+        }),
+        h(SwitchRow, {
+          title: t('settings.hide.handles'),
+          description: t('settings.hide.handlesHint'),
+          checked: options.hideHandles,
+          onChange: (value) => writeOptions({ hideHandles: value }),
+        }),
+        h(SwitchRow, {
+          title: t('settings.hide.toBottom'),
+          description: t('settings.hide.toBottomHint'),
+          checked: options.hideToBottom,
+          onChange: (value) => writeOptions({ hideToBottom: value }),
+        }),
+
+        h('div', { className: 'cs-set-group' }, t('settings.group.add')),
+        h(TextRow, {
+          title: t('settings.add.title'),
+          description: t('settings.add.titleHint'),
+          placeholder: t('settings.add.titlePlaceholder'),
+          value: options.title,
+          seed,
+          onChange: (value) => writeOptions({ title: value }),
+        }),
+        h(TextRow, {
+          title: t('settings.add.subtitle'),
+          description: t('settings.add.subtitleHint'),
+          placeholder: t('settings.add.titlePlaceholder'),
+          value: options.subtitle,
+          seed,
+          onChange: (value) => writeOptions({ subtitle: value }),
+        }),
+        h(TextRow, {
+          title: t('settings.add.footer'),
+          description: t('settings.add.footerHint'),
+          placeholder: t('settings.add.titlePlaceholder'),
+          value: options.footer,
+          seed,
+          onChange: (value) => writeOptions({ footer: value }),
+        }),
+        h(SwitchRow, {
+          title: t('settings.add.meta'),
+          description: t('settings.add.metaHint'),
+          checked: options.showMeta,
+          onChange: (value) => writeOptions({ showMeta: value }),
+        }),
+        h(SwitchRow, {
+          title: t('settings.add.divider'),
+          description: t('settings.add.dividerHint'),
+          checked: options.divider,
+          onChange: (value) => writeOptions({ divider: value }),
+        }),
+
+        h('div', { className: 'cs-set-group' }, t('settings.group.layout')),
+        h(SelectRow, {
+          title: t('settings.layout.align'),
+          description: t('settings.layout.alignHint'),
+          value: options.align,
+          options: [
+            ['left', t('settings.align.left')],
+            ['center', t('settings.align.center')],
+          ],
+          onChange: (value) => writeOptions({ align: value }),
+        }),
+        h(SelectRow, {
+          title: t('settings.layout.edge'),
+          description: t('settings.layout.edgeHint'),
+          value: String(options.edge),
+          options: edgeLabels,
+          onChange: (value) => writeOptions({ edge: Number(value) }),
+        }),
+        h(SelectRow, {
+          title: t('settings.layout.scale'),
+          description: t('settings.layout.scaleHint'),
+          value: options.scale,
+          options: scaleLabels,
+          onChange: (value) => writeOptions({ scale: value }),
+        }),
+
+        h(
+          'div',
+          { className: 'cs-set-foot' },
+          h('span', { className: 'cs-set-desc' }, t('settings.resetHint')),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'cs-set-reset',
+              onClick: () => {
+                resetOptions()
+                setSeed((current) => current + 1)
+              },
+            },
+            t('settings.reset'),
+          ),
+        ),
+      )
+    }
+
     // ===== apply.js ==================================================
 
     /**
-     * Registration: the locale tables, the stylesheet, and the two capture entries.
+     * Registration: the locale tables, the stylesheet, the settings section, and the two capture entries.
      *
-     * Both entries ask for nothing but slots and locale. The capture reads the page's own DOM and writes
-     * the clipboard or a file, so this bundle adds no host route, no settings section and no stored
-     * state; unloading it removes the stylesheet and the dictionaries it registered.
+     * The entries ask for nothing but slots and locale. The capture reads the page's own DOM and writes
+     * the clipboard or a file; the settings section writes one preference object into the page's own
+     * storage, so this bundle still adds no host route, no host `Config` and no host-side state, and
+     * unloading it removes the stylesheet, the dictionaries and the section it registered.
      */
 
     /** Services this bundle cannot work without. */
@@ -2126,6 +2990,8 @@ window.__ModuleLoader__.load({
     /** The entry sits at the right end of the composer tool row. */
     const WHOLE_SLOT = 'conversation.input.right'
     const TURN_SLOT = 'conversation.chat.assistant-actions'
+    /** The panel the settings page mounts in; its `label` is the navigation entry's name. */
+    const SETTINGS_SLOT = 'settings.section'
 
     /**
      * @param ctx - client root context
@@ -2153,6 +3019,20 @@ window.__ModuleLoader__.load({
             order: 0,
           },
           TurnScreenshotButton,
+        ),
+      )
+
+      // The settings page: the label is resolved by the shell on every locale switch, so the navigation
+      // entry follows the active language without a reload.
+      ctx.slots.inject(SETTINGS_SLOT, () =>
+        ctx.slots.register(
+          {
+            name: SETTINGS_SLOT,
+            id: 'chat-screenshot',
+            order: 45,
+            label: () => translate('settings.title'),
+          },
+          SettingsSection,
         ),
       )
 

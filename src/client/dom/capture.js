@@ -13,16 +13,18 @@
 import {
   BACKGROUND_TOKENS,
   DEBUG_MEASURE,
-  EDGE_PADDING,
   HOLDER_ATTRIBUTE,
   IMAGE_TIMEOUT,
+  MIN_SCALE,
   MIN_WIDTH,
   SCROLL_ATTRIBUTE,
   STAGE_ATTRIBUTE,
   TURN_ATTRIBUTE,
 } from '../shell/const.js'
+import { readOptions } from '../shell/options.js'
 import { dropChrome, dropSkipped, sanitizeClone } from './clone.js'
 import { findLoadOlder } from './paging.js'
+import { insertBlocks, insertMeta } from './inserts.js'
 import { planCrop } from './band.js'
 import { renderStage } from '../render/index.js'
 import { captureScale, nextFrame, waitForImages } from '../render/scale.js'
@@ -115,15 +117,24 @@ export async function captureConversation(anchor, pruneClone) {
   doc.body.appendChild(holder)
 
   try {
+    const options = readOptions()
+    // Pairing first: `sanitizeClone` walks the live tree and the clone in step by child index, so any
+    // pruning done before it shifts the indexes and leaves a deeper video or iframe behind, which the
+    // SVG path then fails to decode.
+    sanitizeClone(app, clone)
     // The composer shares this scroller; `dropSkipped` prunes it at whatever depth the layout puts
     // it, so the seat never reaches the picture.
     dropSkipped(clone)
-    dropChrome(clone)
+    dropChrome(clone, options)
     // The paging control belongs to browsing, not to the transcript. It is dropped from the clone so
     // the picture opens on real content.
     const older = findLoadOlder(clone)
     if (older !== null) older.remove()
     if (pruneClone !== undefined) pruneClone(clone)
+    // The reader's own header and footer go in after the band is pruned, so a one-turn capture carries
+    // them too, and inside the clone, so the SVG serializer sees them.
+    const turns = clone.querySelectorAll(`[${TURN_ATTRIBUTE}]`).length
+    const blocks = insertBlocks(clone, options, insertMeta(new Date(), turns))
     clone.style.setProperty('width', `${width}px`)
     // `width` has to mean the outer box. The app surface's padding is part of `clientWidth`, so
     // under `content-box` the clone grew by its own horizontal padding, which pushed the transcript
@@ -144,7 +155,6 @@ export async function captureConversation(anchor, pruneClone) {
       scrollerClone.style.setProperty('max-height', 'none')
       scrollerClone.style.setProperty('overflow', 'visible')
     }
-    sanitizeClone(app, clone)
     // An image inside a reply decodes after the clone is built, and its box only reaches its real
     // height then. Measuring first reported a shorter transcript for exactly those turns and the
     // crop cut their bottom. Wait for the media, then force one synchronous layout so every rect
@@ -185,11 +195,19 @@ export async function captureConversation(anchor, pruneClone) {
     }
     // Start the picture at the first turn instead of the scroll port, then give the bottom the same
     // inset. Cutting above the first turn would slice the previous reply in half, so the
-    // transcript's own edge is the cut and the padding comes from both sides in `cropCanvas`.
+    // transcript's own edge is the cut and the padding comes from both sides in `cropCanvas`. A header
+    // the reader added sits above the first turn, so the cut starts at whichever is higher.
+    if (blocks.head !== null) {
+      firstTurnTop = Math.min(firstTurnTop, blocks.head.getBoundingClientRect().top - cloneBox.top)
+    }
     const crop = planCrop({ measured, scrollerTop, firstTurnTop, lastTurnBottom, contentBottom })
     const clipTop = crop.top
     const clipHeight = crop.height
-    const scale = captureScale(canvasWidth, clipHeight)
+    // `auto` keeps the largest factor the canvas budget allows. A fixed preset only ever lowers that
+    // factor: asking for 2x on a transcript that has to be scaled to 0.6x must not overflow the canvas.
+    const autoScale = captureScale(canvasWidth, clipHeight)
+    const wanted = options.scale === 'auto' ? autoScale : Number(options.scale)
+    const scale = Math.max(MIN_SCALE, Math.min(autoScale, Number.isFinite(wanted) ? wanted : autoScale))
     if (DEBUG_MEASURE && typeof console !== 'undefined') {
       console.info('[dsh-screenshot] capture', {
         containerWidth: canvasWidth,
@@ -202,6 +220,8 @@ export async function captureConversation(anchor, pruneClone) {
         scale,
         lastTurnBottom: lastTurnBottom > 0 ? Math.round(lastTurnBottom) : null,
         contentBottom: contentBottom > 0 ? Math.round(contentBottom) : null,
+        head: blocks.head !== null,
+        foot: blocks.foot !== null,
         rootClass: typeof app.className === 'string' ? app.className : '',
       })
     }
@@ -216,7 +236,7 @@ export async function captureConversation(anchor, pruneClone) {
         top: clipTop,
         width: canvasWidth,
         height: clipHeight,
-        pad: EDGE_PADDING,
+        pad: options.edge,
       },
     })
   } finally {

@@ -1,5 +1,6 @@
 /**
- * Logic checks for the parts that need no browser: the canvas budget and the XML escaping.
+ * Logic checks for the parts that need no browser: the canvas budget, the XML escaping, the crop, the
+ * paging labels and the option normalisation.
  *
  * The budget is worth testing because its failure is silent in the other direction: too small a cap
  * and every long transcript comes out blurry, too large a cap and `toBlob` returns null and the
@@ -11,6 +12,9 @@ import { MAX_AREA, MAX_SIDE, DEFAULT_SCALE, MIN_SCALE } from '../src/client/shel
 import { captureScale } from '../src/client/render/scale.js'
 import { xmlText, wrapMedia } from '../src/client/render/svg.js'
 import { planCrop } from '../src/client/dom/band.js'
+import { classifyPaging } from '../src/client/dom/paging.js'
+import { normalizeOptions } from '../src/client/shell/options.js'
+import { fillTokens, insertMeta } from '../src/client/dom/inserts.js'
 
 const problems = []
 
@@ -118,6 +122,55 @@ cropCase(
   { measured: 300, scrollerTop: 40, firstTurnTop: Infinity, lastTurnBottom: 0, contentBottom: 0 },
   { top: 40, height: 260 },
 )
+
+// Paging labels: the control carries every state's label at once and hides the inactive ones, so the
+// reading has to come from the visible subtree. These cases pin what each label means and, more
+// importantly, that the concatenation of all five is not mistaken for a "load more" control — that
+// mistake is what kept a capture waiting on a disabled button.
+for (const [label, expect] of [
+  ['加载更早', 'more'],
+  ['已到会话开头', 'start'],
+  ['正在加载', 'busy'],
+  ['重新加载', 'retry'],
+  ['load earlier', 'more'],
+  ['start of conversation', 'start'],
+  ['', null],
+  ['this reply is about loading earlier pages', null],
+  ['加载更早正在加载正在处理重新加载已到会话开头', null],
+]) {
+  const got = classifyPaging(label)
+  check(
+    `label ${JSON.stringify(label)} classifies`,
+    got === expect,
+    `got ${JSON.stringify(got)}, expected ${JSON.stringify(expect)}`,
+  )
+}
+
+// Options: a stored value can be hand-edited, half-written or older than the presets, so every read
+// lands on an offered value and the capture never has to defend itself.
+const defaults = normalizeOptions(null)
+check('empty options fall back to the defaults', defaults.edge === 24 && defaults.hideClock === true, 'defaults drifted')
+check('a preset is kept', normalizeOptions({ edge: 40, align: 'center' }).edge === 40, 'edge 40 was not kept')
+check('an unknown margin lands on the nearest preset', normalizeOptions({ edge: 100 }).edge === 40, 'edge was not clamped')
+check('a margin between presets lands on the closer one', normalizeOptions({ edge: 20 }).edge === 24, 'edge picked the wrong preset')
+check('an unknown scale falls back to auto', normalizeOptions({ scale: '9' }).scale === 'auto', 'scale was not rejected')
+check('an unknown alignment falls back to left', normalizeOptions({ align: 'justify' }).align === 'left', 'align was not rejected')
+check('a switch that is not a boolean keeps its default', normalizeOptions({ hideClock: 'yes' }).hideClock === true, 'a string flipped a switch')
+check('text is trimmed and collapsed', normalizeOptions({ title: '  a   b  ' }).title === 'a b', 'text was not normalized')
+check('text is capped', normalizeOptions({ footer: 'x'.repeat(5_000) }).footer.length === 200, 'text was not capped')
+
+// The inserted blocks: the meta line is formatted once and the reader's own placeholders are filled
+// from it, so the picture never prints an unresolved `{date}`.
+const meta = insertMeta(new Date(2026, 10, 25, 9, 5), 7)
+check('meta pads the clock', meta.time === '09:05', `got ${meta.time}`)
+check('meta formats the date', meta.date === '2026-11-25', `got ${meta.date}`)
+check('meta keeps the turn count', meta.turns === 7, `got ${meta.turns}`)
+check(
+  'tokens are filled',
+  fillTokens('{turns} | {date} {time}', meta) === '7 | 2026-11-25 09:05',
+  `got ${fillTokens('{turns} | {date} {time}', meta)}`,
+)
+check('unknown tokens survive', fillTokens('{nope}', meta) === '{nope}', 'an unknown token was eaten')
 
 if (problems.length > 0) {
   for (const problem of problems) console.log(`logic: ${problem}`)

@@ -60,6 +60,108 @@ export const STYLES = String.raw`
   z-index: 30;
   pointer-events: none;
 }
+.cs-set {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 8px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+.cs-set-intro {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+.cs-set-group {
+  margin: 16px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+.cs-set-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+.cs-set-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.cs-set-row-check {
+  cursor: pointer;
+}
+.cs-set-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cs-set-label {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+.cs-set-desc {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+.cs-set-box {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--dsw-alias-brand-primary);
+}
+.cs-set-input,
+.cs-set-select {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 320px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+}
+.cs-set-select {
+  max-width: 160px;
+}
+.cs-set-input:focus-visible,
+.cs-set-select:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+.cs-set-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+.cs-set-reset {
+  flex: none;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.cs-set-reset:hover {
+  background: var(--dsw-alias-bg-layer-2);
+}
 `
 
 /**

@@ -1,6 +1,7 @@
 [
   "shell/const.js",
   "shell/runtime.js",
+  "shell/options.js",
   "shell/i18n.js",
   "shell/style.js",
   "render/scale.js",
@@ -14,10 +15,12 @@
   "dom/clone.js",
   "dom/band.js",
   "dom/paging.js",
+  "dom/inserts.js",
   "dom/turn.js",
   "dom/capture.js",
   "shell/status.js",
   "views/icons.js",
   "views/buttons.js",
+  "views/settings.js",
   "apply.js"
 ]

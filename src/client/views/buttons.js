@@ -7,7 +7,7 @@ import { h, useCallback } from '../shell/runtime.js'
 import { useCaptureStatus, deliver } from '../shell/status.js'
 import { captureConversation, conversationRoot } from '../dom/capture.js'
 import { captureTurn } from '../dom/turn.js'
-import { findLoadOlder, loadFullHistory } from '../dom/paging.js'
+import { hasOlderPages, loadFullHistory } from '../dom/paging.js'
 import { CameraIcon, CheckIcon } from './icons.js'
 
 /**
@@ -65,7 +65,9 @@ export function ScreenshotButton({ sessionId }) {
       if (root.scrollHeight <= 1) throw new Error('empty')
 
       let historyComplete = true
-      if (findLoadOlder(root) !== null) {
+      // A disabled control and the "start of conversation" label both mean the history is already
+      // complete, so the entry never announces a wait it is not going to have.
+      if (hasOlderPages(root)) {
         say(t('state.loadingHistory'), true)
         historyComplete = await loadFullHistory(root)
       }

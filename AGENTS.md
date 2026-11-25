@@ -52,14 +52,28 @@ Documentation is English with a `.zh-CN.md` edition.
   attribute, not on one of its values.
 - A capture reports what it actually did. When the history cannot be drained, the toast says the
   picture covers the loaded turns only; a renderer fallback is logged, never hidden.
+- The paging control never unmounts. It stays in the layout, turns `disabled` and swaps its visible
+  label for "start of conversation", and it carries all five labels at once with the inactive ones
+  `aria-hidden`. Read the visible label, treat `disabled` or `start` as "the history is complete", and
+  never click a control that is busy or disabled: the button-as-it-exists reading is what kept a
+  capture waiting out the whole history budget on a transcript that was already complete.
+- Anything the settings add to the picture is built inside the staged clone, above the first turn or
+  below the last one. The SVG path serializes that element alone, so a header mounted beside it would
+  be laid out and then left out of the bytes. Colours there are literal greys: a `var(--dsw-alias-*)`
+  resolves in the live page, which is what the hand painter reads, but the serialized document has no
+  theme root, and the two paths would then disagree.
+- Preferences live in `localStorage` under one key, `chat-screenshot.options`, and every read
+  normalises them: a hand-edited key, a value from an older build and an unoffered margin all land on
+  an offered value before a capture sees them. The plugin declares no host `Config`, and a capture
+  must never need a restart. The settings section is a single `settings.section` registration: the
+  host draws the navigation label and hands the component `close` alone, so the section renders rows,
+  not a heading.
 - Parts stay importable by node on their own: `export` on every top-level declaration (the build
   strips it when joining) and an `import` for everything used from a neighbour, even though the
   joined scope would hide the omission.
 - Sources are written without trailing semicolons in JavaScript. The CSS inside
   `shell/style.js` is a template string and keeps its own semicolons; a mechanical pass over
   semicolons must skip that file.
-- The plugin declares no host `Config` and no persisted settings. A capture must never need a
-  restart.
 
 ## Verification
 
@@ -68,10 +82,17 @@ node build.mjs --check
 node checks/structure.mjs
 node checks/i18n.mjs
 node checks/logic.mjs
+node checks/serve.mjs   # then open http://127.0.0.1:8712/checks/dom.html
 ```
 
-The checks cover the bundle contract, the language tables and the pure helpers. None of them can tell
-whether the picture looks right: for that, load the page, click both cameras, and paste the result.
+The first four cover the bundle contract, the language tables and the pure helpers. `checks/dom.html`
+runs the parts that need a document — the paging labels, the chrome switches, the inserted blocks and
+the crop they feed — against a fixture built from the host's markers, and prints PASS/FAIL in the tab
+title with the per-case detail on `window.__verify`. `checks/serve.mjs` exists because a browser
+refuses a module graph loaded from `file://`.
+
+None of them can tell whether the picture looks right: for that, load the page, click both cameras, and
+paste the result.
 
 `apply` publishes `window.__chatScreenshot`, removed when the plugin unloads. It carries
 `captureConversation(anchor)`, `captureTurn(tail)` and `translate(key, vars)`. The handle exists so a

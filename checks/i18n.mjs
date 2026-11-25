@@ -39,7 +39,9 @@ for (const key of Object.keys(zh)) {
   if (String(en[key]).trim() === '') fail(`en has an empty message: ${key}`);
 }
 
-// Every key a view asks for must exist, and every table entry must be asked for somewhere.
+// Every key a view asks for must exist, and every table entry must be asked for somewhere. Both
+// spellings count: the components translate through the hook's `t`, while the parts that run outside
+// a component (the settings label, the inserted footer line) call `translate` directly.
 const used = new Set();
 const walk = (dir) => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -47,7 +49,7 @@ const walk = (dir) => {
     if (entry.isDirectory()) walk(path);
     else if (entry.name.endsWith('.js')) {
       const source = readFileSync(path, 'utf8');
-      for (const matched of source.matchAll(/\bt\(\s*'([\w.]+)'/g)) used.add(matched[1]);
+      for (const matched of source.matchAll(/\b(?:t|translate)\(\s*'([\w.]+)'/g)) used.add(matched[1]);
     }
   }
 };
