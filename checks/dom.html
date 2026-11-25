@@ -47,14 +47,14 @@
     </div>
     <script type="module">
 
-      import { readPaging, classifyPaging, hasOlderPages, findLoadOlder } from '../src/client/dom/paging.js'
-      import { applyRules, autoName, elementKey } from '../src/client/dom/rules.js'
+      import { readPaging, classifyPaging, hasOlderPages, findLoadOlder } from '../src/client/dom/transcript/paging.js'
+      import { applyRules, autoName, elementKey } from '../src/client/dom/clone/rules.js'
       import { buildStage } from '../src/client/dom/stage.js'
-      import { insertBlocks } from '../src/client/dom/inserts.js'
-      import { renderTemplate, tokenValues } from '../src/client/dom/tokens.js'
-      import { planCrop } from '../src/client/dom/band.js'
+      import { insertBlocks } from '../src/client/dom/clone/inserts.js'
+      import { renderTemplate, tokenValues } from '../src/client/dom/clone/tokens.js'
+      import { planCrop } from '../src/client/dom/transcript/band.js'
       import { normalizeOptions } from '../src/client/shell/options.js'
-      import { turnList, pruneTurns } from '../src/client/dom/turn.js'
+      import { turnList, pruneTurns } from '../src/client/dom/transcript/turn.js'
       window.addEventListener('error', (event) => { window.__fatal = String(event.message) + ' @' + event.lineno })
 
       const results = []

@@ -4,10 +4,10 @@
  * Both are pure. The state they edit and the callbacks that write it arrive as props, so the surface
  * decides what a change means and these decide only how it looks.
  */
-import { h } from '../shell/runtime.js'
-import { RULE_PRESETS, STYLE_PROPS, TEXT_SIZES } from '../shell/const.js'
-import { menuRow } from './editor-rows.js'
-import { describeSelected, presetLabel, sizeLabel } from './editor-labels.js'
+import { h } from '../../shell/runtime.js'
+import { RULE_PRESETS, STYLE_PROPS, TEXT_SIZES } from '../../shell/const.js'
+import { menuRow } from './rows.js'
+import { describeSelected, presetLabel, sizeLabel } from './labels.js'
 
 export function elementInspector(props) {
   const { t, selection, rule, detail, styleKeys, attrKeys, Switch, Button } = props

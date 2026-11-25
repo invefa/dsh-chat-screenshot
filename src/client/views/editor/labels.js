@@ -2,8 +2,8 @@
  * The words this surface prints: the built-in names, the preset names, and the one-line summary of
  * an element. They live apart from the component so the inspector and the palette can share them.
  */
-import { describeElement } from '../dom/rules.js'
-import { readOptions, ruleFor } from '../shell/options.js'
+import { describeElement } from '../../dom/clone/rules.js'
+import { readOptions, ruleFor } from '../../shell/options.js'
 
 export function pieceLabel(t, id) {
   if (id === 'nav') return t('settings.piece.nav')

@@ -7,8 +7,8 @@
  * the picture.
  */
 
-import { TURN_LABEL_CHARS, TURN_TAIL_ATTRIBUTE, USER_FLOW_KIND } from '../shell/const.js'
-import { captureConversation, conversationRoot } from './capture.js'
+import { TURN_LABEL_CHARS, TURN_TAIL_ATTRIBUTE, USER_FLOW_KIND } from '../../shell/const.js'
+import { captureConversation, conversationRoot } from '../capture.js'
 import { deepestCommonAncestor, precedes } from './geometry.js'
 /**
  * @returns the container plus the units to keep, or null when the marks do not line up.

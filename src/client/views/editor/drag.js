@@ -1,4 +1,4 @@
-import { BLOCK_ATTRIBUTE, ZONE_ATTRIBUTE } from '../shell/const.js'
+import { BLOCK_ATTRIBUTE, ZONE_ATTRIBUTE } from '../../shell/const.js'
 
 /**
  * Dragging a block into the picture.

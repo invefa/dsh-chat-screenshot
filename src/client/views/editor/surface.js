@@ -29,8 +29,8 @@ import {
   TEMPLATE_TOKENS,
   TEXT_SIZES,
   ZONE_ATTRIBUTE,
-} from '../shell/const.js'
-import { useTranslate } from '../shell/i18n.js'
+} from '../../shell/const.js'
+import { useTranslate } from '../../shell/i18n.js'
 import {
   addBlock,
   blockFor,
@@ -46,14 +46,14 @@ import {
   updateBlock,
   useOptions,
   writeOptions,
-} from '../shell/options.js'
-import { autoName, describeElement, elementKey } from '../dom/rules.js'
-import { buildStage } from '../dom/stage.js'
-import { native, h, react, reactDom, useEffect, useRef, useState, useMemo } from '../shell/runtime.js'
-import { describeSelected, entryLabel, kindLabel, pieceLabel } from './editor-labels.js'
-import { BLOCK_PAYLOAD, dropTarget, readDrag, writeDrag } from './editor-drag.js'
-import { libraryView } from './editor-library.js'
-import { blockInspector, elementInspector } from './editor-inspector.js'
+} from '../../shell/options.js'
+import { autoName, describeElement, elementKey } from '../../dom/clone/rules.js'
+import { buildStage } from '../../dom/stage.js'
+import { native, h, react, reactDom, useEffect, useRef, useState, useMemo } from '../../shell/runtime.js'
+import { describeSelected, entryLabel, kindLabel, pieceLabel } from './labels.js'
+import { BLOCK_PAYLOAD, dropTarget, readDrag, writeDrag } from './drag.js'
+import { libraryView } from './library.js'
+import { blockInspector, elementInspector } from './inspector.js'
 
 /** The names the built-in pieces answer to, so a hidden one still reads as something. */
 function findConversation() {

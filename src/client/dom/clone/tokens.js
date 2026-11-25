@@ -7,7 +7,7 @@
  * a typo would be worse than showing it.
  */
 
-import { TEMPLATE_TOKENS } from '../shell/const.js'
+import { TEMPLATE_TOKENS } from '../../shell/const.js'
 
 /** The first non-empty text found under one of the selectors, trimmed. */
 function firstText(doc, selectors) {

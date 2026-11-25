@@ -21,11 +21,11 @@ import {
   STAGE_ATTRIBUTE,
   TURN_ATTRIBUTE,
 } from '../shell/const.js'
-import { pieceBottom } from './band.js'
-import { dropSkipped, sanitizeClone } from './clone.js'
-import { applyRules } from './rules.js'
-import { insertBlocks } from './inserts.js'
-import { tokenValues } from './tokens.js'
+import { pieceBottom } from './transcript/band.js'
+import { dropSkipped, sanitizeClone } from './clone/prepare.js'
+import { applyRules } from './clone/rules.js'
+import { insertBlocks } from './clone/inserts.js'
+import { tokenValues } from './clone/tokens.js'
 import { resolveBackground } from './capture.js'
 
 /**

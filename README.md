@@ -114,10 +114,13 @@ the editor — the switches then fall back to plain markup.
 | `index.js` | Host half: nothing to run, present because a loader entry must be a plugin |
 | `src/client/apply.js` | Registration: locale tables, stylesheet, both entries, the settings section |
 | `src/client/shell/` | Constants, React access, saved options, message tables, stylesheet, status state |
-| `src/client/dom/` | Clone preparation, the rule engine, template variables, history paging, the blocks the settings add, turn band, the capture itself, the edit surface |
+| `src/client/dom/` | The orchestrators: stage a clone, measure the band, drive the capture |
+| `src/client/dom/clone/` | Everything done to the copy: preparation, the rule engine, template variables, the blocks the settings add |
+| `src/client/dom/transcript/` | Reading the conversation: turn bands, history paging, geometry |
 | `src/client/render/` | Renderer choice, SVG document, hand painter, crop, canvas budget |
 | `src/client/output/` | Clipboard write and download |
-| `src/client/views/` | The button body, the right-click menu, the turn chooser, the editor and its rows, inspector, library and drag helpers, the two entries, the icons, the settings section |
+| `src/client/views/` | The button body, the right-click menu, the turn chooser, the two entries, the icons, the settings section |
+| `src/client/views/editor/` | The edit surface: its frame, the drag helpers, the menu rows, the inspector and the library |
 | `src/client/manifest.json` | Bundle order |
 | `client.js` | Generated bundle; do not edit |
 | `build.mjs` | Joins the parts into `client.js` |
@@ -141,4 +144,6 @@ Every user-facing string lives in `src/client/shell/i18n.js` and is registered w
 ## License
 
 [GNU General Public License v3.0](LICENSE), `GPL-3.0-only`. Copyright (C) 2026 invefa. A redistributed build keeps this license and comes with the corresponding source.
+
+
 

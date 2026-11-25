@@ -63,7 +63,7 @@
       const label = (text) => ({ title: text, subtitle: text, footer: text })
       const stage = buildStage(anchor, { ...OPTION_DEFAULTS, title: '标题', subtitle: '副标题' }, label('添加'))
 
-      // The editor frame exactly as views/editor.js lays it out.
+      // The editor frame exactly as views/editor/surface.js lays it out.
       const root = document.createElement('div')
       root.className = 'cs-ed-root'
       root.dataset.dshScreenshotEditor = 'true'
@@ -88,3 +88,4 @@
     </script>
   </body>
 </html>
+

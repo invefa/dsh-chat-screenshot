@@ -2742,7 +2742,7 @@ window.__ModuleLoader__.load({
       setTimeout(() => URL.revokeObjectURL(url), 30_000)
     }
 
-    // ===== dom/geometry.js ===========================================
+    // ===== dom/transcript/geometry.js ================================
 
     /**
      * Document-order questions the turn band asks.
@@ -2761,7 +2761,7 @@ window.__ModuleLoader__.load({
       return null
     }
 
-    // ===== dom/clone.js ==============================================
+    // ===== dom/clone/prepare.js ======================================
 
     /**
      * What leaves the clone, and what cannot be painted.
@@ -2870,7 +2870,7 @@ window.__ModuleLoader__.load({
       return found
     }
 
-    // ===== dom/tokens.js =============================================
+    // ===== dom/clone/tokens.js =======================================
 
     /**
      * What a text block can say about the shot it is part of.
@@ -2963,7 +2963,7 @@ window.__ModuleLoader__.load({
       return /\{[a-z_]+\}/.test(text)
     }
 
-    // ===== dom/rules.js ==============================================
+    // ===== dom/clone/rules.js ========================================
 
     /**
      * What leaves the picture, expressed as rules instead of a fixed list.
@@ -3140,7 +3140,7 @@ window.__ModuleLoader__.load({
       return first === undefined ? tag : `${tag}.${first}`
     }
 
-    // ===== dom/band.js ===============================================
+    // ===== dom/transcript/band.js ====================================
 
     /**
      * Where the picture starts and how tall it is.
@@ -3200,7 +3200,7 @@ window.__ModuleLoader__.load({
       return { top, height, bottom }
     }
 
-    // ===== dom/paging.js =============================================
+    // ===== dom/transcript/paging.js ==================================
 
     /**
      * Draining the transcript's history before the picture is taken.
@@ -3381,7 +3381,7 @@ window.__ModuleLoader__.load({
       }
     }
 
-    // ===== dom/inserts.js ============================================
+    // ===== dom/clone/inserts.js ======================================
 
     /**
      * The picture's own content: the blocks the reader placed above and below the transcript.
@@ -3540,7 +3540,7 @@ window.__ModuleLoader__.load({
       return { head, foot }
     }
 
-    // ===== dom/turn.js ===============================================
+    // ===== dom/transcript/turn.js ====================================
 
     /**
      * One Q&A turn as a band of flow items.
@@ -4349,7 +4349,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    // ===== views/editor-labels.js ====================================
+    // ===== views/editor/labels.js ====================================
 
     /**
      * The words this surface prints: the built-in names, the preset names, and the one-line summary of
@@ -4431,7 +4431,7 @@ window.__ModuleLoader__.load({
       return `${head} · ${info.text === '' ? '—' : info.text} · ${info.children}`
     }
 
-    // ===== views/editor-drag.js ======================================
+    // ===== views/editor/drag.js ======================================
 
     /**
      * Dragging a block into the picture.
@@ -4494,7 +4494,7 @@ window.__ModuleLoader__.load({
       dragging = payload
     }
 
-    // ===== views/editor-rows.js ======================================
+    // ===== views/editor/rows.js ======================================
 
     /**
      * One labelled menu of a few values, built from the host's own components: the row every choice in
@@ -4526,7 +4526,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    // ===== views/editor-inspector.js =================================
+    // ===== views/editor/inspector.js =================================
 
     /**
      * The two inspectors of the edit surface: one element of the copy, or one content block.
@@ -4840,7 +4840,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'cs-ed-side' }, ...rows)
     }
 
-    // ===== views/editor-library.js ===================================
+    // ===== views/editor/library.js ===================================
 
     /**
      * The palette: the five built-in shapes, the components the user saved, and the variables a text
@@ -4960,7 +4960,7 @@ window.__ModuleLoader__.load({
       return library
     }
 
-    // ===== views/editor.js ===========================================
+    // ===== views/editor/surface.js ===================================
 
     /**
      * The edit surface: the picture, editable where it is drawn.

@@ -2,7 +2,7 @@
  * One labelled menu of a few values, built from the host's own components: the row every choice in
  * the inspector is made of.
  */
-import { h, useState } from '../shell/runtime.js'
+import { h, useState } from '../../shell/runtime.js'
 
 export function menuRow(props) {
   const [open, setOpen] = useState(false)

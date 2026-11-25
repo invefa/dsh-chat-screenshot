@@ -7,11 +7,11 @@ import { SCROLL_ATTRIBUTE } from '../shell/const.js'
 import { h, useState, useCallback, useEffect } from '../shell/runtime.js'
 import { useCaptureStatus, deliver } from '../shell/status.js'
 import { captureConversation, conversationRoot } from '../dom/capture.js'
-import { captureTurn, captureTurns, turnList } from '../dom/turn.js'
-import { hasOlderPages, loadFullHistory } from '../dom/paging.js'
+import { captureTurn, captureTurns, turnList } from '../dom/transcript/turn.js'
+import { hasOlderPages, loadFullHistory } from '../dom/transcript/paging.js'
 import { CameraIcon, CheckIcon } from './icons.js'
 import { CaptureMenu, TurnPicker } from './menu.js'
-import { openEditor } from './editor.js'
+import { openEditor } from './editor/surface.js'
 
 /**
  * One button with its spinner, its success check and its toast.

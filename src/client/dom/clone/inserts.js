@@ -20,8 +20,8 @@ import {
   HEAD_ATTRIBUTE,
   SCROLL_ATTRIBUTE,
   ZONE_ATTRIBUTE,
-} from '../shell/const.js'
-import { translate } from '../shell/i18n.js'
+} from '../../shell/const.js'
+import { translate } from '../../shell/i18n.js'
 import { renderTemplate } from './tokens.js'
 
 /** Muted copy and hairline rules, chosen to stay legible on a light and on a dark transcript. */

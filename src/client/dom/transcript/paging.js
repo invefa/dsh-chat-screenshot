@@ -17,7 +17,7 @@ import {
   SCROLL_ATTRIBUTE,
   STABLE_TICKS,
   STABLE_TICK_MS,
-} from '../shell/const.js'
+} from '../../shell/const.js'
 /** Longest label the control may carry and still count as the paging control. */
 const MAX_LABEL = 24
 

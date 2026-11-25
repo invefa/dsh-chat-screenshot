@@ -2,10 +2,10 @@
  * The palette: the five built-in shapes, the components the user saved, and the variables a text
  * block can print. Every entry is draggable and also clickable, so it works without a mouse.
  */
-import { h } from '../shell/runtime.js'
-import { MAX_CUSTOM, TEMPLATE_TOKENS } from '../shell/const.js'
-import { kindLabel } from './editor-labels.js'
-import { BLOCK_PAYLOAD } from './editor-drag.js'
+import { h } from '../../shell/runtime.js'
+import { MAX_CUSTOM, TEMPLATE_TOKENS } from '../../shell/const.js'
+import { kindLabel } from './labels.js'
+import { BLOCK_PAYLOAD } from './drag.js'
 
 /**
  * Build the palette.

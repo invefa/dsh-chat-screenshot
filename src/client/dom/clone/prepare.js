@@ -20,7 +20,7 @@ import {
   TO_BOTTOM_SLOT,
   TURN_SPACER_ATTRIBUTE,
   WIDTH_HANDLE_ATTRIBUTE,
-} from '../shell/const.js'
+} from '../../shell/const.js'
 
 /**
  * The chrome pieces a capture can drop, each one tied to the switch that drops it.

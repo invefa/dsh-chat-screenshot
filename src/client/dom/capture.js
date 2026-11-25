@@ -22,11 +22,11 @@ import {
   TURN_ATTRIBUTE,
 } from '../shell/const.js'
 import { readOptions } from '../shell/options.js'
-import { dropSkipped, sanitizeClone } from './clone.js'
-import { applyRules } from './rules.js'
-import { insertBlocks } from './inserts.js'
-import { tokenValues } from './tokens.js'
-import { pieceBottom, planCrop } from './band.js'
+import { dropSkipped, sanitizeClone } from './clone/prepare.js'
+import { applyRules } from './clone/rules.js'
+import { insertBlocks } from './clone/inserts.js'
+import { tokenValues } from './clone/tokens.js'
+import { pieceBottom, planCrop } from './transcript/band.js'
 import { renderStage } from '../render/index.js'
 import { captureScale, nextFrame, waitForImages } from '../render/scale.js'
 /** The colour the picture starts from: the transcript's own, else a theme token, else the page. */

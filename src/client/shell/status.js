@@ -3,7 +3,7 @@
  * download when the clipboard refuses.
  */
 
-import { useCallback, useEffect, useRef, useState } from '../shell/runtime.js'
+import { useCallback, useEffect, useRef, useState } from './runtime.js'
 import { useTranslate } from './i18n.js'
 import { copyPng } from '../output/clipboard.js'
 import { downloadPng } from '../output/download.js'

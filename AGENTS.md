@@ -13,10 +13,13 @@ clipboard or a download is the output, and the only persisted state is one `loca
 | Numbers and host markers | `src/client/shell/const.js` |
 | Message tables, locale wiring | `src/client/shell/i18n.js` |
 | Status state and one delivery path | `src/client/shell/status.js` |
-| Clone preparation and the capture | `src/client/dom/` |
+| Staging a clone, the band, the capture | `src/client/dom/` |
+| Everything done to the copy: preparation, rules, tokens, blocks | `src/client/dom/clone/` |
+| Reading the conversation: turns, paging, geometry | `src/client/dom/transcript/` |
 | Renderers, crop, canvas budget | `src/client/render/` |
 | Clipboard and download | `src/client/output/` |
-| Button body, entries, icons | `src/client/views/` |
+| Button body, entries, icons, settings | `src/client/views/` |
+| The edit surface, its inspector and library | `src/client/views/editor/` |
 | Bundle order | `src/client/manifest.json` |
 | Checks | `checks/` |
 
@@ -74,7 +77,7 @@ Documentation is English with a `.zh-CN.md` edition.
   dims and stays where the picture would draw it — no setting is invisible, and no part is
   special-cased into permanent absence. Anything the editor shows comes from `readOptions()`; a
   control that kept its own state would show a picture no capture will ever make.
-- `dom/rules.js` is the only path that hides anything, and `shell/options.js` is the only
+- `dom/clone/rules.js` is the only path that hides anything, and `shell/options.js` is the only
   shape it reads. A part the plugin names is a rule like any other: the built-in eight keep their names
   and defaults in `CHROME_PIECES`, but they travel through `applyRules` exactly as a user rule does,
   so the capture and the editor cannot disagree about what is hidden. Nothing is removed
@@ -108,7 +111,7 @@ Documentation is English with a `.zh-CN.md` edition.
   `{ id, kind, zone, ... }` with `kind` in text / spacer / image / divider / meta and `zone` in top /
   bottom, so the two fixed fields that used to be here are two ordinary blocks; the library appends or
   drags one in, and a block already in the picture is dragged to move it, both zones included.
-- Text in a block is a template. `dom/tokens.js` reads the conversation and the host for
+- Text in a block is a template. `dom/clone/tokens.js` reads the conversation and the host for
   `{turns}` `{prompts}` `{date}` `{time}` `{weekday}` `{title}` `{model}` `{session}` `{app}`
   `{version}`, and only those are replaced, at capture time; unknown braces survive, and the editor
   shows the placeholders because it renders with the raw values.
@@ -168,6 +171,9 @@ A rebuilt bundle is served under a content revision fixed at composition, so a r
 old bytes: toggle the plugin off and on, then reload.
 
 中文版见 [AGENTS.zh-CN.md](AGENTS.zh-CN.md)。
+
+
+
 
 
 

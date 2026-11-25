@@ -11,12 +11,12 @@
 import { MAX_AREA, MAX_SIDE, MAX_BLOCKS, DEFAULT_SCALE, MIN_SCALE } from '../src/client/shell/const.js'
 import { captureScale } from '../src/client/render/scale.js'
 import { xmlText, wrapMedia } from '../src/client/render/svg.js'
-import { planCrop } from '../src/client/dom/band.js'
-import { classifyPaging } from '../src/client/dom/paging.js'
+import { planCrop } from '../src/client/dom/transcript/band.js'
+import { classifyPaging } from '../src/client/dom/transcript/paging.js'
 import { MAX_RULES } from '../src/client/shell/const.js'
 import { normalizeOptions, normalizeRule, normalizeRules, ruleId } from '../src/client/shell/options.js'
 import { addBlock, moveBlock, normalizeBlock, normalizeBlocks, readOptions, writeOptions } from '../src/client/shell/options.js'
-import { renderTemplate } from '../src/client/dom/tokens.js'
+import { renderTemplate } from '../src/client/dom/clone/tokens.js'
 
 // Node has no localStorage, and the option store is written through it, so the checks carry a tiny
 // key/value stand-in. Anything the real store does (JSON, defaults, normalisation) stays under test.

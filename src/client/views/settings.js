@@ -11,7 +11,7 @@ import { EDGE_CHOICES, SCALE_CHOICES, SCROLL_ATTRIBUTE } from '../shell/const.js
 import { resetOptions, useOptions, writeOptions } from '../shell/options.js'
 import { native, h, react, useMemo, useState } from '../shell/runtime.js'
 import { useTranslate } from '../shell/i18n.js'
-import { openEditor } from './editor.js'
+import { openEditor } from './editor/surface.js'
 
 /** Whether a conversation is mounted, so the door can say why it is closed. */
 function conversationReady() {

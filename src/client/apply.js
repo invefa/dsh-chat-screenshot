@@ -11,10 +11,10 @@ import { h } from './shell/runtime.js'
 import { installLocale, translate } from './shell/i18n.js'
 import { installStyle } from './shell/style.js'
 import { captureConversation } from './dom/capture.js'
-import { captureTurn } from './dom/turn.js'
+import { captureTurn } from './dom/transcript/turn.js'
 import { ScreenshotButton, TurnScreenshotButton } from './views/buttons.js'
 import { SettingsSection } from './views/settings.js'
-import { openEditor } from './views/editor.js'
+import { openEditor } from './views/editor/surface.js'
 /** Services this bundle cannot work without. */
 export const inject = ['slots', 'locale']
 

@@ -17,9 +17,9 @@ import {
   FIELD_ATTRIBUTE,
   HIDE_STYLE,
   PIECE_ATTRIBUTE,
-} from '../shell/const.js'
-import { OPTION_DEFAULTS } from '../shell/options.js'
-import { CHROME_PIECES } from './clone.js'
+} from '../../shell/const.js'
+import { OPTION_DEFAULTS } from '../../shell/options.js'
+import { CHROME_PIECES } from './prepare.js'
 
 /** Every element one selector list covers, in document order, without duplicates. */
 function collect(root, selectors) {

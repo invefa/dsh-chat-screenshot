@@ -90,10 +90,13 @@ dsh plugin --profile web remove dsh-chat-screenshot
 | `index.js` | Host半侧：没有要执行的逻辑，仅为满足加载器对插件条目的要求 |
 | `src/client/apply.js` | 注册：语言表、样式表、两个入口、设置节 |
 | `src/client/shell/` | 常量、React访问、保存的选项、文案表、样式表、状态与投递 |
-| `src/client/dom/` | 克隆准备、规则引擎、模板变量、历史分页、设置加入的内容块、轮次范围、截图本身、编辑面 |
+| `src/client/dom/` | 编排：搭克隆、量带子、走完整次截图 |
+| `src/client/dom/clone/` | 发生在副本上的一切：准备、规则引擎、模板变量、设置加入的内容块 |
+| `src/client/dom/transcript/` | 读会话本身：轮次范围、历史分页、几何 |
 | `src/client/render/` | 渲染器选择、SVG文档、手绘、裁剪、画布预算 |
 | `src/client/output/` | 剪贴板写入与下载 |
-| `src/client/views/` | 按钮主体、右键菜单、轮次选择器、编辑面与它的行、检查器、组件库与拖拽、两个入口、图标、设置节 |
+| `src/client/views/` | 按钮主体、右键菜单、轮次选择器、两个入口、图标、设置节 |
+| `src/client/views/editor/` | 编辑面本身，以及它的拖拽、菜单行、检查器与组件库 |
 | `src/client/manifest.json` | 打包顺序 |
 | `client.js` | 生成的打包产物，不直接编辑 |
 | `build.mjs` | 把各部分拼成`client.js` |
@@ -117,4 +120,6 @@ node checks/serve.mjs     # 再打开 http://127.0.0.1:8712/checks/dom.html 跑D
 ## 许可证
 
 [GNU通用公共许可证第3版](LICENSE)，`GPL-3.0-only`。版权所有 (C) 2026 invefa。再分发时须沿用本许可证，并随附对应源码。
+
+
 

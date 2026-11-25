@@ -6,7 +6,7 @@
  * transcript's flow; none of them may take content with it.
  */
 
-import { PIECE_ATTRIBUTE } from '../shell/const.js'
+import { PIECE_ATTRIBUTE } from '../../shell/const.js'
 
 /**
  * The bottom edge of a chrome piece that survived pruning, in the clone's own coordinates.
