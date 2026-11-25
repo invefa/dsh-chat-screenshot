@@ -23,7 +23,6 @@ import {
 } from '../shell/const.js'
 import { readOptions } from '../shell/options.js'
 import { dropChrome, dropSkipped, sanitizeClone } from './clone.js'
-import { findLoadOlder } from './paging.js'
 import { insertBlocks, insertMeta } from './inserts.js'
 import { planCrop } from './band.js'
 import { renderStage } from '../render/index.js'
@@ -122,14 +121,11 @@ export async function captureConversation(anchor, pruneClone) {
     // pruning done before it shifts the indexes and leaves a deeper video or iframe behind, which the
     // SVG path then fails to decode.
     sanitizeClone(app, clone)
-    // The composer shares this scroller; `dropSkipped` prunes it at whatever depth the layout puts
-    // it, so the seat never reaches the picture.
+    // Our own opt-out marker, then the chrome the reader switched off. The paging control and the
+    // composer are part of that same table now: both are visible on screen, so both are the reader's
+    // to keep rather than something the capture drops behind their back.
     dropSkipped(clone)
     dropChrome(clone, options)
-    // The paging control belongs to browsing, not to the transcript. It is dropped from the clone so
-    // the picture opens on real content.
-    const older = findLoadOlder(clone)
-    if (older !== null) older.remove()
     if (pruneClone !== undefined) pruneClone(clone)
     // The reader's own header and footer go in after the band is pruned, so a one-turn capture carries
     // them too, and inside the clone, so the SVG serializer sees them.

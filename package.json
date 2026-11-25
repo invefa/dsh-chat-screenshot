@@ -1,6 +1,6 @@
 {
   "name": "dsh-chat-screenshot",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "description": "Screenshot a chat, or one turn of it, from the DSH Web UI to the clipboard as a PNG",

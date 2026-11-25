@@ -18,11 +18,12 @@
   "dom/inserts.js",
   "dom/turn.js",
   "dom/capture.js",
+  "dom/stage.js",
   "shell/status.js",
   "views/icons.js",
   "views/menu.js",
+  "views/editor.js",
   "views/buttons.js",
-  "views/preview.js",
   "views/settings.js",
   "apply.js"
 ]

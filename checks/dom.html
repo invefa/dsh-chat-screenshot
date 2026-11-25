@@ -34,6 +34,7 @@
         <nav>导航</nav>
         <div data-width-handle="true">handle</div>
         <div class="toBottomSlot">回到底部</div>
+        <div data-composer-seat="true">输入区</div>
         <div class="flow">
           <div data-chat-flow-kind="user">第一轮 用户消息</div>
           <div data-chat-turn="1"><div>第一轮回答</div><div data-turn-tail="true"><button type="button">操作</button></div></div>
@@ -46,7 +47,8 @@
     </div>
     <script type="module">
       import { readPaging, classifyPaging, hasOlderPages, findLoadOlder } from '../src/client/dom/paging.js'
-      import { dropChrome } from '../src/client/dom/clone.js'
+      import { dropChrome, paintChrome } from '../src/client/dom/clone.js'
+      import { buildStage } from '../src/client/dom/stage.js'
       import { insertBlocks, insertMeta, fillTokens } from '../src/client/dom/inserts.js'
       import { planCrop } from '../src/client/dom/band.js'
       import { normalizeOptions } from '../src/client/shell/options.js'
@@ -113,6 +115,77 @@
       }
       check('the switches keep what they name', kept.clock === 2 && kept.step === 1 && kept.files === 1, JSON.stringify(kept))
 
+      // --- the edit surface keeps what the switches name, dimmed but present -----------------------
+      const painted = scroller.cloneNode(true)
+      const marked = paintChrome(painted, normalizeOptions({}))
+      const pieceIds = Array.from(new Set(marked.map((el) => el.getAttribute('data-dsh-screenshot-piece')))).sort()
+      check(
+        'every part the switches name is in the copy',
+        pieceIds.join(',') === 'attachments,clock,composer,handles,nav,paging,process,toBottom',
+        pieceIds.join(','),
+      )
+      check(
+        'a switched-off part stays in the copy',
+        painted.querySelectorAll('[data-clock]').length === 2,
+        String(painted.querySelectorAll('[data-clock]').length),
+      )
+      check(
+        'a switched-off part is dimmed rather than gone',
+        Array.from(painted.querySelectorAll('[data-clock]')).every((el) => el.classList.contains('cs-ed-off')),
+        'missing the dimming class',
+      )
+      check(
+        'a part left on is marked as shown',
+        painted.querySelector('[data-step-process]')?.classList.contains('cs-ed-on') === true,
+        'not marked',
+      )
+      check(
+        'the copy says which part it is',
+        painted.querySelector('[data-clock]')?.getAttribute('data-dsh-screenshot-piece') === 'clock',
+        painted.querySelector('[data-clock]')?.getAttribute('data-dsh-screenshot-piece') ?? 'null',
+      )
+      check(
+        'the paging control and the composer are parts too',
+        painted.querySelector('[data-chat-history]') !== null && painted.querySelector('[data-composer-seat]') !== null,
+        'not tagged',
+      )
+
+      // --- the edit surface, built in the conversation's place --------------------------------------
+      const stage = buildStage(scroller.querySelector('[data-chat-turn]'), normalizeOptions({}), {
+        title: '标题',
+        subtitle: '副标题',
+        footer: '页脚',
+      })
+      document.body.appendChild(stage.element)
+      const fields = stage.head === null ? [] : Array.from(stage.head.querySelectorAll('[data-dsh-screenshot-field]'))
+      check('the surface is the editor', stage.element.hasAttribute('data-dsh-screenshot-editor') === true, 'not tagged')
+      check('the header is there to write in before it has text', fields.length === 2, String(fields.length))
+      check(
+        'the fields are editable in place',
+        fields[0]?.getAttribute('contenteditable') === 'plaintext-only',
+        fields[0]?.getAttribute('contenteditable') ?? 'null',
+      )
+      check(
+        'an empty field keeps its hint out of the text',
+        fields[0]?.textContent === '' && fields[0]?.getAttribute('data-empty') === 'true',
+        JSON.stringify({ text: fields[0]?.textContent, empty: fields[0]?.getAttribute('data-empty') }),
+      )
+      const copyIds = Array.from(
+        new Set(Array.from(stage.clone.querySelectorAll('[data-dsh-screenshot-piece]')).map((el) => el.getAttribute('data-dsh-screenshot-piece'))),
+      ).sort()
+      check('the edit copy still holds every part', copyIds.length === 8, copyIds.join(','))
+      check(
+        'the footer offers its own field',
+        stage.foot?.querySelectorAll('[data-dsh-screenshot-field]').length === 1,
+        String(stage.foot?.querySelectorAll('[data-dsh-screenshot-field]').length),
+      )
+      stage.destroy()
+      check(
+        'closing takes the surface away',
+        document.querySelector('[data-dsh-screenshot-editor]') === null,
+        'left behind',
+      )
+
       // --- the inserted blocks, in the order a capture builds them -------------------------------
       // The clone is measured while attached, exactly as the capture does it: a detached subtree has no
       // layout, so every rect reads zero and the crop would look correct by accident.
@@ -123,7 +196,6 @@
       const clone = scroller.cloneNode(true)
       const options = normalizeOptions({ title: '标题 {turns}', footer: '页脚', align: 'center', showMeta: true })
       dropChrome(clone, options)
-      clone.querySelector('[data-chat-history]')?.remove()
       clone.style.height = 'auto'
       clone.style.overflow = 'visible'
       holder.appendChild(clone)

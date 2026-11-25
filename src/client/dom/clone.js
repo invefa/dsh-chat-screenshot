@@ -3,11 +3,17 @@
  *
  * Every operation here works on the staged clone, never on the live tree: the composer the user may
  * be typing in, the scroll position and the app's own state stay untouched.
+ *
+ * One table decides what counts as chrome, so the capture and the edit surface agree by construction:
+ * the capture deletes the pieces the reader switched off, and the edit surface keeps every one of
+ * them, marked, and counts a click on it.
  */
 
 import {
   ATTACHMENTS_ATTRIBUTE,
   CLOCK_ROW_ATTRIBUTE,
+  HISTORY_ATTRIBUTE,
+  PIECE_ATTRIBUTE,
   PRUNE_DEPTH,
   PROCESS_ATTRIBUTE,
   SKIP_ATTRIBUTES,
@@ -17,15 +23,48 @@ import {
   WIDTH_HANDLE_ATTRIBUTE,
 } from '../shell/const.js'
 import { OPTION_DEFAULTS } from '../shell/options.js'
+
 /**
- * Live subtrees that must never reach the picture.
+ * The chrome pieces a capture can drop, each one tied to the switch that drops it.
+ *
+ * Selectors are markers, never layout tests: a `nav` is chrome because message markdown cannot
+ * produce one, and the paging control keeps its marker after the last page, when it only turns
+ * `disabled`. `composer` is the input seat and its counters, which share the transcript's scroller.
+ */
+export const CHROME_PIECES = [
+  { id: 'nav', option: 'hideNav', selectors: ['nav'] },
+  {
+    id: 'handles',
+    option: 'hideHandles',
+    selectors: [`[${WIDTH_HANDLE_ATTRIBUTE}]`, `[${TURN_SPACER_ATTRIBUTE}]`],
+  },
+  { id: 'clock', option: 'hideClock', selectors: [`[${CLOCK_ROW_ATTRIBUTE}]`] },
+  {
+    id: 'process',
+    option: 'hideProcess',
+    selectors: [`[${PROCESS_ATTRIBUTE}]`, `[${STEP_PROCESS_ATTRIBUTE}]`],
+  },
+  { id: 'attachments', option: 'hideAttachments', selectors: [`[${ATTACHMENTS_ATTRIBUTE}]`] },
+  { id: 'paging', option: 'hidePaging', selectors: [`[${HISTORY_ATTRIBUTE}]`] },
+  {
+    id: 'composer',
+    option: 'hideComposer',
+    selectors: SKIP_ATTRIBUTES.filter((name) => name !== 'data-dsh-screenshot-skip').map(
+      (name) => `[${name}]`,
+    ),
+  },
+  { id: 'toBottom', option: 'hideToBottom', selectors: [TO_BOTTOM_SLOT] },
+]
+
+/**
+ * Live subtrees that must never reach the picture, whatever the switches say.
  *
  * `role="navigation"` is deliberately not pruned: the sidebar carries it, and so do the per-message
  * action rows. Cropping already removes the sidebar, while pruning the role deleted the action icons
  * that the screen shows.
  */
 export function isSkipped(node) {
-  return SKIP_ATTRIBUTES.some((name) => node.hasAttribute(name))
+  return node.hasAttribute('data-dsh-screenshot-skip')
 }
 
 /**
@@ -69,46 +108,47 @@ export function sanitizeClone(live, clone) {
   }
 }
 
-/**
- * Drop the transcript's chrome from the clone: the turn navigator rail, drag handles, the paging
- * spacer, the per-turn metadata row and whatever else the reader chose to leave out. Cropping cannot
- * remove these because they sit in the transcript's flow; they are deleted by marker instead.
- *
- * @param clone - the staged copy.
- * @param options - the reader's switches; a missing option falls back to the default.
- */
-export function dropChrome(clone, options = OPTION_DEFAULTS) {
-  // The turn navigator is a `nav` rail pinned to the transcript's right edge: a stack of tick marks,
-  // one per turn. It is chrome, and it shrinks with the band, so a short capture left a few ticks
-  // beside the content. Every `nav` in the clone is chrome, because message markdown cannot produce
-  // one; the earlier size test left the short rail behind.
-  if (options.hideNav) {
-    for (const nav of clone.querySelectorAll('nav')) nav.remove()
-  }
-  if (options.hideHandles) {
-    for (const handle of clone.querySelectorAll(`[${WIDTH_HANDLE_ATTRIBUTE}]`)) handle.remove()
-    for (const spacer of clone.querySelectorAll(`[${TURN_SPACER_ATTRIBUTE}]`)) spacer.remove()
-  }
-  // Every turn ends with a metadata row: clock, per-turn usage, and the hover-only action icons.
-  // The host marks both rows with data-clock, the user's message with "start" and the answer with
-  // "end"; both are chrome, and a capture of a conversation does not need the time of day.
-  if (options.hideClock) {
-    for (const row of clone.querySelectorAll(`[${CLOCK_ROW_ATTRIBUTE}]`)) row.remove()
-  }
-  // Thinking and tool rows: one collapsed disclosure per step. They are part of the exchange, so they
-  // stay unless the reader asks for the answer alone.
-  if (options.hideProcess) {
-    for (const row of clone.querySelectorAll(`[${PROCESS_ATTRIBUTE}], [${STEP_PROCESS_ATTRIBUTE}]`)) {
-      row.remove()
+/** Every element one piece covers, in document order, without duplicates. */
+function matches(clone, selectors) {
+  const found = []
+  for (const selector of selectors) {
+    for (const node of clone.querySelectorAll(selector)) {
+      if (!found.includes(node)) found.push(node)
     }
   }
-  if (options.hideAttachments) {
-    for (const row of clone.querySelectorAll(`[${ATTACHMENTS_ATTRIBUTE}]`)) row.remove()
+  return found
+}
+
+/**
+ * Drop the chrome the reader switched off.
+ *
+ * Cropping cannot remove these because they sit in the transcript's flow; they are deleted by
+ * marker instead. A missing option falls back to the default, so a caller can pass a partial set.
+ *
+ * @param clone - the staged copy.
+ * @param options - the reader's switches.
+ */
+export function dropChrome(clone, options = OPTION_DEFAULTS) {
+  for (const piece of CHROME_PIECES) {
+    if (options[piece.option] !== true) continue
+    for (const node of matches(clone, piece.selectors)) node.remove()
   }
-  // The "back to bottom" button floats over the transcript's lower right corner once the reader has
-  // scrolled away from the tail. It belongs to browsing, not to the conversation, and a capture is
-  // always taken with the whole transcript laid out, so the control has no place in the picture.
-  if (options.hideToBottom) {
-    for (const slot of clone.querySelectorAll(TO_BOTTOM_SLOT)) slot.remove()
+}
+
+/**
+ * Keep every piece in the clone and mark it instead, for the edit surface: what the reader switched
+ * off stays visible, dimmed, so it can be switched back on by clicking the place it occupies.
+ *
+ * @returns {Element[]} the elements carrying a piece tag.
+ */
+export function paintChrome(clone, options = OPTION_DEFAULTS) {
+  const painted = []
+  for (const piece of CHROME_PIECES) {
+    for (const node of matches(clone, piece.selectors)) {
+      node.setAttribute(PIECE_ATTRIBUTE, piece.id)
+      node.classList.add(options[piece.option] === true ? 'cs-ed-off' : 'cs-ed-on')
+      painted.push(node)
+    }
   }
+  return painted
 }

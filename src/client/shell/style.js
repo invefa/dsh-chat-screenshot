@@ -180,143 +180,128 @@ export const STYLES = String.raw`
   flex: none;
   min-width: 96px;
 }
-.cs-prev-wrap {
-  margin: 14px 0 10px;
-}
-.cs-prev {
+.cs-ed-root {
+  /* Above the host's dialog layer (1000) so the surface covers a settings dialog it was opened from;
+     below the tooltip and menu layers (1100) so the host's own popups still sit on top. */
   position: relative;
+  z-index: 1050;
+}
+.cs-ed-wrap {
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-height: 420px;
-  overflow: auto;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-1);
+  background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-  line-height: 1.6;
 }
-.cs-prev.align-center {
-  text-align: center;
-}
-.cs-prev-piece,
-.cs-prev-insert {
-  position: relative;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.cs-prev-piece:hover,
-.cs-prev-insert:hover {
-  outline: 1px dashed var(--dsw-alias-border-l4);
-  outline-offset: 2px;
-}
-.cs-prev-piece:focus-visible,
-.cs-prev-insert:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary);
-  outline-offset: 2px;
-}
-.cs-prev-piece.is-off,
-.cs-prev-insert.is-empty {
-  outline: 1px dashed var(--dsw-alias-border-l3);
-  outline-offset: 2px;
-  opacity: 0.75;
-}
-.cs-prev-off {
-  display: inline-block;
-  padding: 2px 8px;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
-}
-.cs-prev-rail {
-  align-self: flex-end;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-}
-.cs-prev-turn {
+.cs-ed-bar {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex: none;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
 }
-.cs-prev-bubble {
-  align-self: flex-end;
-  max-width: 82%;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-2);
-}
-.cs-prev-files,
-.cs-prev-think,
-.cs-prev-clock {
-  color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
-}
-.cs-prev-think {
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-2);
-}
-.cs-prev-answer {
-  max-width: 88%;
-}
-.cs-prev-chip {
-  display: inline-block;
-  padding: 3px 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 999px;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 11px;
-}
-.cs-prev-insert {
+.cs-ed-lead {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px 0;
+  min-width: 0;
 }
-.cs-prev-title {
-  font-size: 17px;
+.cs-ed-title {
+  font-size: 14px;
   font-weight: 600;
-  line-height: 1.35;
 }
-.cs-prev-subtitle,
-.cs-prev-footer {
+.cs-ed-hint {
+  max-width: 70ch;
   color: var(--dsw-alias-label-secondary);
-  font-size: 13px;
-}
-.cs-prev-meta {
-  color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
+  line-height: 1.6;
 }
-.cs-prev-rule {
-  border-top: 1px solid var(--dsw-alias-border-l1);
-}
-.cs-prev-hint {
-  margin: 0 0 8px;
-}
-.cs-prev-editor {
+.cs-ed-actions {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  flex: none;
+  gap: 8px;
+  align-items: center;
 }
-.cs-prev-field {
+.cs-ed-host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.cs-ed {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+.cs-ed-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--cs-edge, 24px) 0;
+}
+.cs-ed-frame {
+  position: relative;
+  margin: 0 auto;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--dsw-alias-border-l2);
+}
+.cs-ed-stage {
+  pointer-events: auto;
+  user-select: none;
+}
+.cs-ed-stage [data-dsh-screenshot-piece] {
+  cursor: pointer;
+  outline: 1px dashed transparent;
+  outline-offset: -1px;
+}
+.cs-ed-stage [data-dsh-screenshot-piece]:hover {
+  outline-color: var(--dsw-alias-brand-primary);
+}
+.cs-ed-stage .cs-ed-on {
+  outline-color: transparent;
+}
+.cs-ed-stage .cs-ed-on:hover {
+  outline-color: var(--dsw-alias-brand-primary);
+  background-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, transparent);
+}
+.cs-ed-stage .cs-ed-off {
+  outline-color: var(--dsw-alias-border-l4);
+  opacity: 0.45;
+}
+.cs-ed-stage .cs-ed-off:hover {
+  outline-color: var(--dsw-alias-brand-primary);
+  opacity: 0.8;
+}
+.cs-ed-field {
+  outline: 1px dashed transparent;
+  outline-offset: 2px;
+  cursor: text;
+  border-radius: 4px;
+  user-select: text;
+}
+.cs-ed-field:hover {
+  outline-color: var(--dsw-alias-border-l4);
+}
+.cs-ed-field:focus {
+  outline: 1px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
+}
+.cs-ed-field[data-empty='true']::before {
+  content: attr(data-cs-placeholder);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.cs-set-open {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-.cs-prev-input {
-  width: 100%;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-base);
-  color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-}
-.cs-prev-input:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary);
-  outline-offset: 1px;
+  align-items: flex-start;
+  margin: 4px 0 18px;
 }
 `
 

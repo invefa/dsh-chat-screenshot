@@ -54,30 +54,35 @@ A successful copy flashes a check over the icon. When the clipboard is unavailab
 
 ## Settings
 
-Settings > ChatScreenshot opens on a miniature of the capture: the same markers, the same chrome, the
-same inserted blocks, drawn at panel size.
+Settings > ChatScreenshot holds one button, three layout rows and a reset. The button opens the editor
+**over the conversation itself**: the transcript stays where it is and the picture is shaped in place.
 
-- **Click a piece to drop it; click it again to bring it back.** A hidden piece leaves a dashed gap
-  with its name, so the setting is never invisible. Six pieces answer this way: the turn navigator, the
-  attachment strip, the thinking and tool rows, the clock and action row, the back-to-bottom button and
-  the drag handles.
-- **Right-click the preview for the full list.** Every toggle appears as a checkable item, marked when
-  the piece is hidden, and the menu also holds "Add a header" and "Add a footer" — or "Edit" once one
-  exists.
-- **Click the header or the footer to edit it** in a dialog: two lines of prose for the header, one line
-  and the metadata switch for the footer, with the divider switch and a save button. Both accept
-  `{turns}`, `{date}` and `{time}`.
-- Three rows under the preview set alignment, outer margin and resolution. Every change applies to the
-  next capture; nothing needs a reload.
+- **Click a piece to hide it; click it again to bring it back.** The piece does not disappear while you
+  edit — it dims and stays where the picture would draw it, so a hidden control is never an invisible
+  setting. All eight answer this way: the turn navigator, the attachment strip, the thinking and tool
+  rows, the clock and action row, the back-to-bottom button, the drag handles, the load-earlier control
+  and the composer.
+- **Type the header and the footer straight into the picture.** Both blocks are drawn in the copy with
+  their placeholders, so the prose is edited where it lands. Both accept `{turns}`, `{date}` and
+  `{time}`.
+- **Right-click anywhere in the editor** for the same switches as a menu, plus the divider, the metadata
+  line and "Restore defaults".
+- **Done** closes the editor. Every change applies to the next capture; nothing needs a reload.
 
-A header is drawn above the first turn and a footer below the last one, inside the cropped area, so they
-survive the same render path as the conversation.
+The editor is the capture's own clone, mounted at full length in a scrolling frame over the
+conversation — the same code path the renderer paints, not a second drawing of it. Nothing is written
+to the live conversation: the copy is a clone, so a click inside it cannot reach the application.
+
+Behind the editor, three rows set alignment, outer margin and resolution. A header is drawn above the
+first turn and a footer below the last one, inside the cropped area, so they survive the same render
+path as the conversation.
 
 Choices live in this browser's `localStorage` under `chat-screenshot.options`; the plugin registers no host configuration and stores nothing on the server. A stored value that no longer matches an offered one falls back to the nearest choice, and "Restore defaults" brings back the picture the plugin took before the settings existed.
 
-The menu, the dialog, the switches and the input fields are the host's own components, read from the
-`@deepseek-ai/dsh-client-ui-primitives` seed word, so the panel keeps the theme, the focus handling and
-the keyboard behaviour of the rest of Settings.
+The menu, the switches and the fields are the host's own components, read from the
+`@deepseek-ai/dsh-client-ui-primitives` seed word, so the editor keeps the theme, the focus handling and
+the keyboard behaviour of the rest of the application. A host that does not seed that table still gets
+the editor — the switches then fall back to plain markup.
 
 ## Limits
 
@@ -93,10 +98,10 @@ the keyboard behaviour of the rest of Settings.
 | `index.js` | Host half: nothing to run, present because a loader entry must be a plugin |
 | `src/client/apply.js` | Registration: locale tables, stylesheet, both entries, the settings section |
 | `src/client/shell/` | Constants, React access, saved options, message tables, stylesheet, status state |
-| `src/client/dom/` | Clone preparation, history paging, the blocks the settings add, turn band, the capture itself |
+| `src/client/dom/` | Clone preparation, the chrome piece table, history paging, the blocks the settings add, turn band, the capture itself, the edit surface |
 | `src/client/render/` | Renderer choice, SVG document, hand painter, crop, canvas budget |
 | `src/client/output/` | Clipboard write and download |
-| `src/client/views/` | The button body, the right-click menu, the turn chooser, the two entries, the icons, the settings section |
+| `src/client/views/` | The button body, the right-click menu, the turn chooser, the editor, the two entries, the icons, the settings section |
 | `src/client/manifest.json` | Bundle order |
 | `client.js` | Generated bundle; do not edit |
 | `build.mjs` | Joins the parts into `client.js` |

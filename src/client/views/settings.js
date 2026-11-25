@@ -1,76 +1,81 @@
 /**
- * The settings panel: a miniature of the capture, the menu it answers to, and three choices about
- * the layout.
+ * The settings section: where the picture is described, and the door into the surface that draws it.
  *
- * The preview is the form. Every chrome piece can be switched off by clicking it in the mock
- * transcript, every added block is edited where it will appear, and the menu behind a right-click
- * repeats all of it as checkable items for anyone who prefers a list. Values are written through
- * `writeOptions`, so a change applies to the next capture and survives a reload without a host
- * round-trip.
+ * The section no longer draws a stand-in of its own. What the picture contains is decided on the
+ * picture — in the conversation's own place, where every piece the capture can hold is already laid
+ * out — so the rows here are the three that have no element to click (alignment, margin, resolution)
+ * and the reset. One description of the state, in the place the state applies to.
  */
 
-import { h, native, useState } from '../shell/runtime.js'
-import { useTranslate } from '../shell/i18n.js'
+import { EDGE_CHOICES, SCALE_CHOICES, SCROLL_ATTRIBUTE } from '../shell/const.js'
 import { resetOptions, useOptions, writeOptions } from '../shell/options.js'
-import { EDGE_CHOICES, SCALE_CHOICES } from '../shell/const.js'
-import { Preview } from './preview.js'
+import { native, h, react, useMemo, useState } from '../shell/runtime.js'
+import { useTranslate } from '../shell/i18n.js'
+import { openEditor } from './editor.js'
 
-/** One choice out of a short list, opened from a native menu when the host ships one. */
+/** Whether a conversation is mounted, so the door can say why it is closed. */
+function conversationReady() {
+  if (typeof document === 'undefined') return false
+  const scroller = document.querySelector(`[${SCROLL_ATTRIBUTE}]`)
+  return scroller instanceof Element ? scroller.clientWidth > 0 : false
+}
+
+/** One setting, with the host's own selector behind a button. */
 function MenuRow({ title, description, value, entries, onSelect }) {
   const [open, setOpen] = useState(false)
-  const [point, setPoint] = useState({ x: 0, y: 0 })
-  const Menu = native?.Menu
-  const Button = native?.Button
-  const shown = entries.find((entry) => entry[0] === value)
-
-  if (!Menu || !Button) {
+  const anchorRef = react.useRef(null)
+  const selected = entries.find((entry) => entry.id === value)
+  const label = selected === undefined ? value : selected.label
+  if (native === undefined) {
     return h(
-      'label',
+      'div',
       { className: 'cs-set-row' },
       h(
-        'span',
+        'div',
         { className: 'cs-set-text' },
-        h('span', { className: 'cs-set-label' }, title),
-        h('span', { className: 'cs-set-desc' }, description),
+        h('div', { className: 'cs-set-label' }, title),
+        h('div', { className: 'cs-set-desc' }, description),
       ),
       h(
         'select',
-        { className: 'cs-set-select', value, onChange: (event) => onSelect(event.target.value) },
-        entries.map(([optionValue, optionLabel]) =>
-          h('option', { key: optionValue, value: optionValue }, optionLabel),
-        ),
+        {
+          className: 'cs-set-select',
+          value,
+          onChange: (event) => onSelect(event.target.value),
+        },
+        entries.map((entry) => h('option', { key: entry.id, value: entry.id }, entry.label)),
       ),
     )
   }
-
+  const { Button, Menu } = native
   return h(
     'div',
     { className: 'cs-set-row' },
     h(
-      'span',
+      'div',
       { className: 'cs-set-text' },
-      h('span', { className: 'cs-set-label' }, title),
-      h('span', { className: 'cs-set-desc' }, description),
+      h('div', { className: 'cs-set-label' }, title),
+      h('div', { className: 'cs-set-desc' }, description),
     ),
     h(
       'div',
-      { className: 'cs-set-picker' },
-      h(Button, {
-        variant: 'outline',
-        size: 'sm',
-        onClick: (event) => {
-          const box = event.currentTarget.getBoundingClientRect()
-          setPoint({ x: box.left, y: box.bottom + 4 })
-          setOpen((current) => !current)
+      { className: 'cs-set-picker', ref: anchorRef },
+      h(
+        Button,
+        {
+          variant: 'outline',
+          size: 'sm',
+          onClick: () => setOpen((value2) => !value2),
         },
-      }, shown ? shown[1] : value),
+        label,
+      ),
       h(Menu, {
         open,
-        anchorPoint: point,
+        anchorRef,
+        items: entries,
+        selectedId: value,
         align: 'end',
         side: 'bottom',
-        selectedId: value,
-        items: entries.map(([optionValue, optionLabel]) => ({ id: optionValue, label: optionLabel })),
         onSelect: (id) => {
           setOpen(false)
           onSelect(id)
@@ -81,63 +86,86 @@ function MenuRow({ title, description, value, entries, onSelect }) {
   )
 }
 
-/** The section body mounted at `settings.section`. */
 export function SettingsSection() {
   const t = useTranslate()
   const options = useOptions()
+  const ready = useMemo(() => conversationReady(), [])
+
+  const edgeEntries = EDGE_CHOICES.map((choice) => ({
+    id: String(choice),
+    label:
+      choice === EDGE_CHOICES[0]
+        ? t('settings.edge.tight')
+        : choice === EDGE_CHOICES[EDGE_CHOICES.length - 1]
+          ? t('settings.edge.loose')
+          : t('settings.edge.normal'),
+  }))
+  const currentEdge = String(options.edge)
 
   return h(
     'div',
     { className: 'cs-set' },
-    h('p', { className: 'cs-set-intro' }, t('settings.intro')),
-    h(Preview, {}),
-    h('p', { className: 'cs-set-desc cs-prev-hint' }, t('settings.previewHint')),
-
-    h(MenuRow, {
-      title: t('settings.layout.align'),
-      description: t('settings.layout.alignHint'),
-      value: options.align,
-      entries: [
-        ['left', t('settings.align.left')],
-        ['center', t('settings.align.center')],
-      ],
-      onSelect: (value) => writeOptions({ align: value }),
-    }),
-    h(MenuRow, {
-      title: t('settings.layout.edge'),
-      description: t('settings.layout.edgeHint'),
-      value: String(options.edge),
-      entries: [
-        [String(EDGE_CHOICES[0]), t('settings.edge.tight')],
-        [String(EDGE_CHOICES[1]), t('settings.edge.normal')],
-        [String(EDGE_CHOICES[2]), t('settings.edge.loose')],
-      ],
-      onSelect: (value) => writeOptions({ edge: Number(value) }),
-    }),
-    h(MenuRow, {
-      title: t('settings.layout.scale'),
-      description: t('settings.layout.scaleHint'),
-      value: options.scale,
-      entries: [
-        [SCALE_CHOICES[0], t('settings.scale.auto')],
-        [SCALE_CHOICES[1], t('settings.scale.x1')],
-        [SCALE_CHOICES[2], t('settings.scale.x2')],
-        [SCALE_CHOICES[3], t('settings.scale.x3')],
-      ],
-      onSelect: (value) => writeOptions({ scale: value }),
-    }),
-
+    h('div', { className: 'cs-set-intro' }, t('settings.intro')),
+    h(
+      'div',
+      { className: 'cs-set-open' },
+      native === undefined
+        ? null
+        : h(
+            native.Button,
+            { variant: 'primary', size: 'sm', disabled: !ready, onClick: () => openEditor() },
+            t('settings.editor.open'),
+          ),
+      ready ? null : h('div', { className: 'cs-set-desc' }, t('settings.editor.noConversation')),
+      h('div', { className: 'cs-set-desc' }, t('settings.editor.hint')),
+    ),
+    h(
+      'div',
+      { className: 'cs-set-group' },
+      h(
+        MenuRow,
+        {
+          title: t('settings.layout.align'),
+          description: t('settings.layout.alignHint'),
+          value: options.align,
+          entries: [
+            { id: 'left', label: t('settings.align.left') },
+            { id: 'center', label: t('settings.align.center') },
+          ],
+          onSelect: (id) => writeOptions({ align: id }),
+        },
+      ),
+      h(MenuRow, {
+        title: t('settings.layout.edge'),
+        description: t('settings.layout.edgeHint'),
+        value: currentEdge,
+        entries: edgeEntries,
+        onSelect: (id) => writeOptions({ edge: Number(id) }),
+      }),
+      h(MenuRow, {
+        title: t('settings.layout.scale'),
+        description: t('settings.layout.scaleHint'),
+        value: options.scale,
+        entries: [
+          { id: 'auto', label: t('settings.scale.auto') },
+          { id: SCALE_CHOICES[1], label: t('settings.scale.x1') },
+          { id: SCALE_CHOICES[2], label: t('settings.scale.x2') },
+          { id: SCALE_CHOICES[3], label: t('settings.scale.x3') },
+        ],
+        onSelect: (id) => writeOptions({ scale: id }),
+      }),
+    ),
     h(
       'div',
       { className: 'cs-set-foot' },
-      h('span', { className: 'cs-set-desc' }, t('settings.resetHint')),
+      h(
+        'div',
+        { className: 'cs-set-desc' },
+        t('settings.resetHint'),
+      ),
       h(
         'button',
-        {
-          type: 'button',
-          className: 'cs-set-reset',
-          onClick: () => resetOptions(),
-        },
+        { type: 'button', className: 'cs-set-reset', onClick: () => resetOptions() },
         t('settings.reset'),
       ),
     ),

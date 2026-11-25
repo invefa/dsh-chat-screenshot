@@ -130,6 +130,12 @@ window.__ModuleLoader__.load({
     const STEP_PROCESS_ATTRIBUTE = 'data-step-process'
     const ATTACHMENTS_ATTRIBUTE = 'data-message-attachments'
 
+    /**
+     * The paging control's wrapper. The button inside it stays mounted after the last page, so the
+     * wrapper is a piece of chrome the reader can keep or drop like any other.
+     */
+    const HISTORY_ATTRIBUTE = 'data-chat-history'
+
     /** Theme tokens consulted for the page background, in order. */
     const BACKGROUND_TOKENS = ['--dsw-alias-bg-base', '--dsw-alias-bg-layer-1']
 
@@ -140,6 +146,14 @@ window.__ModuleLoader__.load({
     /** Marks the blocks the settings can add above and below the transcript. */
     const HEAD_ATTRIBUTE = 'data-dsh-screenshot-head'
     const FOOT_ATTRIBUTE = 'data-dsh-screenshot-foot'
+
+    /**
+     * The edit surface: the overlay that stands in the conversation's place, and the tag that makes any
+     * piece of the staged copy clickable. Both are ours, so they are attributes rather than classes.
+     */
+    const EDITOR_ATTRIBUTE = 'data-dsh-screenshot-editor'
+    const PIECE_ATTRIBUTE = 'data-dsh-screenshot-piece'
+    const FIELD_ATTRIBUTE = 'data-dsh-screenshot-field'
 
     /** Host markers the crop and the turn band are read from. */
     const SCROLL_ATTRIBUTE = 'data-conversation-scroll'
@@ -206,6 +220,16 @@ window.__ModuleLoader__.load({
 
     const native = seedModule('@deepseek-ai/dsh-client-ui-primitives')
 
+    /**
+     * A React root of the plugin's own.
+     *
+     * The edit surface stands in the conversation's place, so it must not be rendered inside the
+     * composer's subtree: a `position:fixed` box is still positioned against an ancestor that carries a
+     * transform or a filter. A root mounted on the document body is outside every such ancestor, which
+     * also keeps the application's React tree from re-rendering the overlay.
+     */
+    const reactDom = seedModule('react-dom/client')
+
     const react = loaded ? require('react') : undefined
 
     const h = loaded ? react.createElement : undefined
@@ -248,7 +272,14 @@ window.__ModuleLoader__.load({
     /** Storage key owned by this plugin. */
     const STORAGE_KEY = 'chat-screenshot.options'
 
-    /** The switches that drop a host subtree from the picture. */
+    /**
+     * The switches that drop a host subtree from the picture.
+     *
+     * Every one of them is a piece of the transcript the reader can see on screen, and every one is
+     * offered in the edit surface, so nothing is dropped by a rule the reader cannot find: the paging
+     * control and the composer used to leave the picture unconditionally, which made two visible parts of
+     * the conversation impossible to keep.
+     */
     const HIDE_FLAGS = [
       'hideClock',
       'hideProcess',
@@ -256,6 +287,8 @@ window.__ModuleLoader__.load({
       'hideNav',
       'hideHandles',
       'hideToBottom',
+      'hidePaging',
+      'hideComposer',
     ]
 
     /** The free-text blocks the picture can carry, with the length each one is capped at. */
@@ -273,6 +306,8 @@ window.__ModuleLoader__.load({
       hideNav: true,
       hideHandles: true,
       hideToBottom: true,
+      hidePaging: true,
+      hideComposer: true,
       title: '',
       subtitle: '',
       footer: '',
@@ -435,41 +470,31 @@ window.__ModuleLoader__.load({
         'menu.confirm': '截图所选（{turns}）',
         'menu.cancel': '取消',
         'menu.turn': '第 {index} 轮',
+        'menu.layout': '调整截图内容…',
         'insert.meta': '{turns} 轮对话 · {date} {time}',
-        'insert.metaSample': '2 轮对话 · 2026-01-01 09:05',
         'settings.title': '对话截图',
-        'settings.intro': '下面这张就是截图的样子。点一下某个部件就隐藏它，再点一下放回来；右键打开完整清单，也能在那里加页头和页脚。设置即刻生效，保存在本机。',
-        'settings.previewHint': '预览按当前设置绘制。隐藏的部件留一条虚线占位，点一下即可恢复。',
+        'settings.intro': '在这里直接把截图调成想要的样子。点部件隐藏它，再点放回来；页头和页脚就在它们出现的位置写。改动立刻生效，并保存在本机。',
+        'settings.editor.open': '在对话中调整…',
+        'settings.editor.noConversation': '先打开一个会话，再回来调整。',
+        'settings.editor.hint': '点部件隐藏，再点放回来；标题、副标题和页脚直接在图里改，回车结束一行。可用 {turns}、{date}、{time}。',
+        'settings.editor.done': '完成',
+        'settings.editor.show': '显示',
+        'settings.editor.hide': '隐藏',
         'settings.piece.nav': '轮次导航',
         'settings.piece.attachments': '用户附件条',
         'settings.piece.process': '思考与工具过程',
         'settings.piece.clock': '时钟与操作行',
         'settings.piece.toBottom': '回到底部按钮',
         'settings.piece.handles': '拖拽手柄与占位',
+        'settings.piece.paging': '加载更早的控件',
+        'settings.piece.composer': '输入区',
         'settings.piece.head': '页头',
         'settings.piece.foot': '页脚',
         'settings.piece.meta': '页脚信息行',
         'settings.piece.divider': '分隔线',
-        'settings.menu.head': '添加页头',
-        'settings.menu.headEdit': '编辑页头',
-        'settings.menu.foot': '添加页脚',
-        'settings.menu.footEdit': '编辑页脚',
-        'settings.sample.nav': '导航',
-        'settings.sample.user': '请把这份记录整理成一份说明',
-        'settings.sample.files': '附件：方案.md',
-        'settings.sample.process': '思考中 · 2 个工具步骤',
-        'settings.sample.answer': '已按三段整理，末尾补了结论。',
-        'settings.sample.clock': '09:05 · 1.2k tokens',
-        'settings.sample.toBottom': '回到底部',
-        'settings.sample.handles': '拖拽手柄',
-        'settings.edit.title': '标题',
-        'settings.edit.subtitle': '副标题',
-        'settings.edit.footer': '页脚文字',
-        'settings.edit.tokens': '可用 {turns}、{date}、{time} 三个占位符。',
-        'settings.edit.untitled': '（未填写标题）',
-        'settings.edit.save': '保存',
-        'settings.edit.cancel': '取消',
-        'settings.add.titlePlaceholder': '例如：会话整理',
+        'settings.edit.title': '添加标题',
+        'settings.edit.subtitle': '添加副标题',
+        'settings.edit.footer': '添加页脚',
         'settings.layout.align': '文字对齐',
         'settings.layout.alignHint': '页头与页脚的对齐方式',
         'settings.align.left': '左对齐',
@@ -513,44 +538,31 @@ window.__ModuleLoader__.load({
         'menu.confirm': 'Capture {turns} selected',
         'menu.cancel': 'Cancel',
         'menu.turn': 'Turn {index}',
+        'menu.layout': 'Adjust the shot…',
         'insert.meta': 'Turns: {turns} · {date} {time}',
-        'insert.metaSample': 'Turns: 2 · 2026-01-01 09:05',
         'settings.title': 'Chat screenshot',
-        'settings.intro':
-          'Choose which chrome the picture keeps, which text it adds, and how it is laid out. Changes apply to the next capture and are stored on this machine.',
-        'settings.intro':
-          'The picture below is what a capture makes. Click a piece to drop it, click it again to bring it back, and right-click for the full list, where the header and the footer are added. Changes apply to the next capture and are stored on this machine.',
-        'settings.previewHint': 'The preview is drawn from the current settings. A hidden piece leaves a dashed gap; click it to restore.',
+        'settings.intro': 'Shape the capture right here. Click a piece to drop it, click it again to bring it back, and write the header and footer where they appear. Changes apply at once and are stored on this machine.',
+        'settings.editor.open': 'Adjust in the conversation…',
+        'settings.editor.noConversation': 'Open a conversation first, then come back.',
+        'settings.editor.hint': 'Click a piece to drop it, click it again to bring it back. Type the title, subtitle and footer right in the picture; Enter ends a line. {turns}, {date} and {time} are available.',
+        'settings.editor.done': 'Done',
+        'settings.editor.show': 'Shown',
+        'settings.editor.hide': 'Hidden',
         'settings.piece.nav': 'Turn navigator',
         'settings.piece.attachments': 'Attachment strip',
         'settings.piece.process': 'Thinking and tool steps',
         'settings.piece.clock': 'Clock and action row',
         'settings.piece.toBottom': 'Back-to-bottom button',
         'settings.piece.handles': 'Drag handles and spacers',
+        'settings.piece.paging': 'Load-earlier control',
+        'settings.piece.composer': 'Composer',
         'settings.piece.head': 'Header',
         'settings.piece.foot': 'Footer',
         'settings.piece.meta': 'Footer meta line',
         'settings.piece.divider': 'Divider',
-        'settings.menu.head': 'Add a header',
-        'settings.menu.headEdit': 'Edit the header',
-        'settings.menu.foot': 'Add a footer',
-        'settings.menu.footEdit': 'Edit the footer',
-        'settings.sample.nav': 'Navigator',
-        'settings.sample.user': 'Turn this transcript into a short brief',
-        'settings.sample.files': 'Attachment: plan.md',
-        'settings.sample.process': 'Thinking · 2 tool steps',
-        'settings.sample.answer': 'Three sections now, and a conclusion at the end.',
-        'settings.sample.clock': '09:05 · 1.2k tokens',
-        'settings.sample.toBottom': 'Back to bottom',
-        'settings.sample.handles': 'Drag handle',
-        'settings.edit.title': 'Title',
-        'settings.edit.subtitle': 'Subtitle',
-        'settings.edit.footer': 'Footer text',
-        'settings.edit.tokens': 'Three placeholders are available: {turns}, {date} and {time}.',
-        'settings.edit.untitled': '(no title yet)',
-        'settings.edit.save': 'Save',
-        'settings.edit.cancel': 'Cancel',
-        'settings.add.titlePlaceholder': 'e.g. Session notes',
+        'settings.edit.title': 'Add a title',
+        'settings.edit.subtitle': 'Add a subtitle',
+        'settings.edit.footer': 'Add a footer',
         'settings.layout.align': 'Text alignment',
         'settings.layout.alignHint': 'Alignment of the added header and footer',
         'settings.align.left': 'Left',
@@ -816,143 +828,128 @@ window.__ModuleLoader__.load({
       flex: none;
       min-width: 96px;
     }
-    .cs-prev-wrap {
-      margin: 14px 0 10px;
-    }
-    .cs-prev {
+    .cs-ed-root {
+      /* Above the host's dialog layer (1000) so the surface covers a settings dialog it was opened from;
+         below the tooltip and menu layers (1100) so the host's own popups still sit on top. */
       position: relative;
+      z-index: 1050;
+    }
+    .cs-ed-wrap {
+      position: fixed;
+      inset: 0;
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      max-height: 420px;
-      overflow: auto;
-      border: 1px solid var(--dsw-alias-border-l2);
-      border-radius: 12px;
-      background: var(--dsw-alias-bg-layer-1);
+      background: var(--dsw-alias-bg-base);
       color: var(--dsw-alias-label-primary);
-      font-size: 13px;
-      line-height: 1.6;
     }
-    .cs-prev.align-center {
-      text-align: center;
-    }
-    .cs-prev-piece,
-    .cs-prev-insert {
-      position: relative;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-    .cs-prev-piece:hover,
-    .cs-prev-insert:hover {
-      outline: 1px dashed var(--dsw-alias-border-l4);
-      outline-offset: 2px;
-    }
-    .cs-prev-piece:focus-visible,
-    .cs-prev-insert:focus-visible {
-      outline: 2px solid var(--dsw-alias-brand-primary);
-      outline-offset: 2px;
-    }
-    .cs-prev-piece.is-off,
-    .cs-prev-insert.is-empty {
-      outline: 1px dashed var(--dsw-alias-border-l3);
-      outline-offset: 2px;
-      opacity: 0.75;
-    }
-    .cs-prev-off {
-      display: inline-block;
-      padding: 2px 8px;
-      color: var(--dsw-alias-label-secondary);
-      font-size: 12px;
-    }
-    .cs-prev-rail {
-      align-self: flex-end;
-      color: var(--dsw-alias-label-tertiary);
-      font-size: 11px;
-      letter-spacing: 0.04em;
-    }
-    .cs-prev-turn {
+    .cs-ed-bar {
       display: flex;
-      flex-direction: column;
-      gap: 8px;
+      flex: none;
+      gap: 16px;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--dsw-alias-border-l1);
+      background: var(--dsw-alias-bg-layer-1);
     }
-    .cs-prev-bubble {
-      align-self: flex-end;
-      max-width: 82%;
-      padding: 8px 12px;
-      border-radius: 12px;
-      background: var(--dsw-alias-bg-layer-2);
-    }
-    .cs-prev-files,
-    .cs-prev-think,
-    .cs-prev-clock {
-      color: var(--dsw-alias-label-secondary);
-      font-size: 12px;
-    }
-    .cs-prev-think {
-      padding: 6px 10px;
-      border-radius: 8px;
-      background: var(--dsw-alias-bg-layer-2);
-    }
-    .cs-prev-answer {
-      max-width: 88%;
-    }
-    .cs-prev-chip {
-      display: inline-block;
-      padding: 3px 10px;
-      border: 1px solid var(--dsw-alias-border-l2);
-      border-radius: 999px;
-      color: var(--dsw-alias-label-secondary);
-      font-size: 11px;
-    }
-    .cs-prev-insert {
+    .cs-ed-lead {
       display: flex;
       flex-direction: column;
       gap: 4px;
-      padding: 6px 0;
+      min-width: 0;
     }
-    .cs-prev-title {
-      font-size: 17px;
+    .cs-ed-title {
+      font-size: 14px;
       font-weight: 600;
-      line-height: 1.35;
     }
-    .cs-prev-subtitle,
-    .cs-prev-footer {
+    .cs-ed-hint {
+      max-width: 70ch;
       color: var(--dsw-alias-label-secondary);
-      font-size: 13px;
-    }
-    .cs-prev-meta {
-      color: var(--dsw-alias-label-tertiary);
       font-size: 12px;
+      line-height: 1.6;
     }
-    .cs-prev-rule {
-      border-top: 1px solid var(--dsw-alias-border-l1);
-    }
-    .cs-prev-hint {
-      margin: 0 0 8px;
-    }
-    .cs-prev-editor {
+    .cs-ed-actions {
       display: flex;
-      flex-direction: column;
-      gap: 12px;
+      flex: none;
+      gap: 8px;
+      align-items: center;
     }
-    .cs-prev-field {
+    .cs-ed-host {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+    }
+    .cs-ed {
+      position: relative;
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      flex-direction: column;
+    }
+    .cs-ed-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: var(--cs-edge, 24px) 0;
+    }
+    .cs-ed-frame {
+      position: relative;
+      margin: 0 auto;
+      overflow: hidden;
+      box-shadow: 0 0 0 1px var(--dsw-alias-border-l2);
+    }
+    .cs-ed-stage {
+      pointer-events: auto;
+      user-select: none;
+    }
+    .cs-ed-stage [data-dsh-screenshot-piece] {
+      cursor: pointer;
+      outline: 1px dashed transparent;
+      outline-offset: -1px;
+    }
+    .cs-ed-stage [data-dsh-screenshot-piece]:hover {
+      outline-color: var(--dsw-alias-brand-primary);
+    }
+    .cs-ed-stage .cs-ed-on {
+      outline-color: transparent;
+    }
+    .cs-ed-stage .cs-ed-on:hover {
+      outline-color: var(--dsw-alias-brand-primary);
+      background-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, transparent);
+    }
+    .cs-ed-stage .cs-ed-off {
+      outline-color: var(--dsw-alias-border-l4);
+      opacity: 0.45;
+    }
+    .cs-ed-stage .cs-ed-off:hover {
+      outline-color: var(--dsw-alias-brand-primary);
+      opacity: 0.8;
+    }
+    .cs-ed-field {
+      outline: 1px dashed transparent;
+      outline-offset: 2px;
+      cursor: text;
+      border-radius: 4px;
+      user-select: text;
+    }
+    .cs-ed-field:hover {
+      outline-color: var(--dsw-alias-border-l4);
+    }
+    .cs-ed-field:focus {
+      outline: 1px solid var(--dsw-alias-brand-primary);
+      outline-offset: 2px;
+    }
+    .cs-ed-field[data-empty='true']::before {
+      content: attr(data-cs-placeholder);
+      opacity: 0.55;
+      pointer-events: none;
+    }
+    .cs-set-open {
       display: flex;
       flex-direction: column;
       gap: 6px;
-    }
-    .cs-prev-input {
-      width: 100%;
-      height: 32px;
-      padding: 0 10px;
-      border: 1px solid var(--dsw-alias-border-l2);
-      border-radius: 8px;
-      background: var(--dsw-alias-bg-base);
-      color: var(--dsw-alias-label-primary);
-      font-size: 13px;
-    }
-    .cs-prev-input:focus-visible {
-      outline: 2px solid var(--dsw-alias-brand-primary);
-      outline-offset: 1px;
+      align-items: flex-start;
+      margin: 4px 0 18px;
     }
     `
 
@@ -1928,17 +1925,54 @@ window.__ModuleLoader__.load({
      *
      * Every operation here works on the staged clone, never on the live tree: the composer the user may
      * be typing in, the scroll position and the app's own state stay untouched.
+     *
+     * One table decides what counts as chrome, so the capture and the edit surface agree by construction:
+     * the capture deletes the pieces the reader switched off, and the edit surface keeps every one of
+     * them, marked, and counts a click on it.
      */
 
+
     /**
-     * Live subtrees that must never reach the picture.
+     * The chrome pieces a capture can drop, each one tied to the switch that drops it.
+     *
+     * Selectors are markers, never layout tests: a `nav` is chrome because message markdown cannot
+     * produce one, and the paging control keeps its marker after the last page, when it only turns
+     * `disabled`. `composer` is the input seat and its counters, which share the transcript's scroller.
+     */
+    const CHROME_PIECES = [
+      { id: 'nav', option: 'hideNav', selectors: ['nav'] },
+      {
+        id: 'handles',
+        option: 'hideHandles',
+        selectors: [`[${WIDTH_HANDLE_ATTRIBUTE}]`, `[${TURN_SPACER_ATTRIBUTE}]`],
+      },
+      { id: 'clock', option: 'hideClock', selectors: [`[${CLOCK_ROW_ATTRIBUTE}]`] },
+      {
+        id: 'process',
+        option: 'hideProcess',
+        selectors: [`[${PROCESS_ATTRIBUTE}]`, `[${STEP_PROCESS_ATTRIBUTE}]`],
+      },
+      { id: 'attachments', option: 'hideAttachments', selectors: [`[${ATTACHMENTS_ATTRIBUTE}]`] },
+      { id: 'paging', option: 'hidePaging', selectors: [`[${HISTORY_ATTRIBUTE}]`] },
+      {
+        id: 'composer',
+        option: 'hideComposer',
+        selectors: SKIP_ATTRIBUTES.filter((name) => name !== 'data-dsh-screenshot-skip').map(
+          (name) => `[${name}]`,
+        ),
+      },
+      { id: 'toBottom', option: 'hideToBottom', selectors: [TO_BOTTOM_SLOT] },
+    ]
+
+    /**
+     * Live subtrees that must never reach the picture, whatever the switches say.
      *
      * `role="navigation"` is deliberately not pruned: the sidebar carries it, and so do the per-message
      * action rows. Cropping already removes the sidebar, while pruning the role deleted the action icons
      * that the screen shows.
      */
     function isSkipped(node) {
-      return SKIP_ATTRIBUTES.some((name) => node.hasAttribute(name))
+      return node.hasAttribute('data-dsh-screenshot-skip')
     }
 
     /**
@@ -1982,48 +2016,49 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /**
-     * Drop the transcript's chrome from the clone: the turn navigator rail, drag handles, the paging
-     * spacer, the per-turn metadata row and whatever else the reader chose to leave out. Cropping cannot
-     * remove these because they sit in the transcript's flow; they are deleted by marker instead.
-     *
-     * @param clone - the staged copy.
-     * @param options - the reader's switches; a missing option falls back to the default.
-     */
-    function dropChrome(clone, options = OPTION_DEFAULTS) {
-      // The turn navigator is a `nav` rail pinned to the transcript's right edge: a stack of tick marks,
-      // one per turn. It is chrome, and it shrinks with the band, so a short capture left a few ticks
-      // beside the content. Every `nav` in the clone is chrome, because message markdown cannot produce
-      // one; the earlier size test left the short rail behind.
-      if (options.hideNav) {
-        for (const nav of clone.querySelectorAll('nav')) nav.remove()
-      }
-      if (options.hideHandles) {
-        for (const handle of clone.querySelectorAll(`[${WIDTH_HANDLE_ATTRIBUTE}]`)) handle.remove()
-        for (const spacer of clone.querySelectorAll(`[${TURN_SPACER_ATTRIBUTE}]`)) spacer.remove()
-      }
-      // Every turn ends with a metadata row: clock, per-turn usage, and the hover-only action icons.
-      // The host marks both rows with data-clock, the user's message with "start" and the answer with
-      // "end"; both are chrome, and a capture of a conversation does not need the time of day.
-      if (options.hideClock) {
-        for (const row of clone.querySelectorAll(`[${CLOCK_ROW_ATTRIBUTE}]`)) row.remove()
-      }
-      // Thinking and tool rows: one collapsed disclosure per step. They are part of the exchange, so they
-      // stay unless the reader asks for the answer alone.
-      if (options.hideProcess) {
-        for (const row of clone.querySelectorAll(`[${PROCESS_ATTRIBUTE}], [${STEP_PROCESS_ATTRIBUTE}]`)) {
-          row.remove()
+    /** Every element one piece covers, in document order, without duplicates. */
+    function matches(clone, selectors) {
+      const found = []
+      for (const selector of selectors) {
+        for (const node of clone.querySelectorAll(selector)) {
+          if (!found.includes(node)) found.push(node)
         }
       }
-      if (options.hideAttachments) {
-        for (const row of clone.querySelectorAll(`[${ATTACHMENTS_ATTRIBUTE}]`)) row.remove()
+      return found
+    }
+
+    /**
+     * Drop the chrome the reader switched off.
+     *
+     * Cropping cannot remove these because they sit in the transcript's flow; they are deleted by
+     * marker instead. A missing option falls back to the default, so a caller can pass a partial set.
+     *
+     * @param clone - the staged copy.
+     * @param options - the reader's switches.
+     */
+    function dropChrome(clone, options = OPTION_DEFAULTS) {
+      for (const piece of CHROME_PIECES) {
+        if (options[piece.option] !== true) continue
+        for (const node of matches(clone, piece.selectors)) node.remove()
       }
-      // The "back to bottom" button floats over the transcript's lower right corner once the reader has
-      // scrolled away from the tail. It belongs to browsing, not to the conversation, and a capture is
-      // always taken with the whole transcript laid out, so the control has no place in the picture.
-      if (options.hideToBottom) {
-        for (const slot of clone.querySelectorAll(TO_BOTTOM_SLOT)) slot.remove()
+    }
+
+    /**
+     * Keep every piece in the clone and mark it instead, for the edit surface: what the reader switched
+     * off stays visible, dimmed, so it can be switched back on by clicking the place it occupies.
+     *
+     * @returns {Element[]} the elements carrying a piece tag.
+     */
+    function paintChrome(clone, options = OPTION_DEFAULTS) {
+      const painted = []
+      for (const piece of CHROME_PIECES) {
+        for (const node of matches(clone, piece.selectors)) {
+          node.setAttribute(PIECE_ATTRIBUTE, piece.id)
+          node.classList.add(options[piece.option] === true ? 'cs-ed-off' : 'cs-ed-on')
+          painted.push(node)
+        }
       }
+      return painted
     }
 
     // ===== dom/band.js ===============================================
@@ -2294,6 +2329,27 @@ window.__ModuleLoader__.load({
         .replace(/\{time\}/g, meta.time)
     }
 
+    /** The placeholders the meta line substitutes, handed back unchanged so the editor shows the tokens. */
+    const RAW_META = Object.freeze({ turns: '{turns}', date: '{date}', time: '{time}' })
+
+    /**
+     * Turn one block of text into a field the reader can type into, in place.
+     *
+     * `contenteditable="plaintext-only"` keeps a paste from arriving with markup the picture cannot paint,
+     * and the attribute that tags the field is also what the overlay listens for when it writes the value
+     * back. An empty field carries its hint in an attribute, so CSS can draw it and `textContent` stays
+     * empty: the saved value is never the hint.
+     */
+    function editable(doc, node, field, placeholder) {
+      node.setAttribute('contenteditable', 'plaintext-only')
+      node.setAttribute('spellcheck', 'false')
+      node.setAttribute(FIELD_ATTRIBUTE, field)
+      node.setAttribute('data-cs-placeholder', placeholder)
+      node.classList.add('cs-ed-field')
+      if (node.textContent === '') node.setAttribute('data-empty', 'true')
+      return node
+    }
+
     /** One block of text with the geometry both renderers agree on. */
     function paragraph(doc, text, style, align) {
       const node = doc.createElement('div')
@@ -2302,44 +2358,56 @@ window.__ModuleLoader__.load({
       return node
     }
 
-    /** The header block, or null when the reader asked for neither a title nor a subtitle. */
-    function buildHead(doc, options, meta) {
+    /**
+     * The header block, or null when the reader asked for neither a title nor a subtitle.
+     *
+     * In edit mode the block is always built, even with both fields empty: the reader needs a place to
+     * click before there is anything to show, and the capture path never sees that empty box.
+     *
+     * @param edit - `{ title, subtitle }` placeholders, or null for the capture.
+     */
+    function buildHead(doc, options, meta, edit = null) {
       const title = fillTokens(options.title, meta)
       const subtitle = fillTokens(options.subtitle, meta)
-      if (title === '' && subtitle === '') return null
+      if (edit === null && title === '' && subtitle === '') return null
       const box = doc.createElement('div')
       box.setAttribute(HEAD_ATTRIBUTE, 'true')
       box.style.cssText =
         `display:block;box-sizing:border-box;padding:2px 0 ${options.divider ? 16 : 12}px;` +
         `text-align:${options.align};` +
         (options.divider ? `border-bottom:1px solid ${RULE};` : '')
-      if (title !== '') {
-        box.appendChild(
-          paragraph(doc, title, 'font-size:17px;line-height:24px;font-weight:600;color:inherit;', options.align),
-        )
+      if (title !== '' || edit !== null) {
+        const node = paragraph(doc, title, 'font-size:17px;line-height:24px;font-weight:600;color:inherit;', options.align)
+        box.appendChild(edit === null ? node : editable(doc, node, 'title', edit.title))
       }
-      if (subtitle !== '') {
-        box.appendChild(
-          paragraph(doc, subtitle, `margin-top:4px;font-size:13px;line-height:20px;color:${MUTED};`, options.align),
+      if (subtitle !== '' || edit !== null) {
+        const node = paragraph(
+          doc,
+          subtitle,
+          `margin-top:4px;font-size:13px;line-height:20px;color:${MUTED};`,
+          options.align,
         )
+        box.appendChild(edit === null ? node : editable(doc, node, 'subtitle', edit.subtitle))
       }
       return box
     }
 
-    /** The footer block, or null when the reader asked for neither a footer nor the metadata line. */
-    function buildFoot(doc, options, meta) {
+    /**
+     * The footer block, or null when the reader asked for neither a footer nor the metadata line.
+     * @param edit - `{ footer }` placeholder, or null for the capture.
+     */
+    function buildFoot(doc, options, meta, edit = null) {
       const footer = fillTokens(options.footer, meta)
-      if (footer === '' && !options.showMeta) return null
+      if (edit === null && footer === '' && !options.showMeta) return null
       const box = doc.createElement('div')
       box.setAttribute(FOOT_ATTRIBUTE, 'true')
       box.style.cssText =
         `display:block;box-sizing:border-box;padding:${options.divider ? 16 : 12}px 0 2px;` +
         `text-align:${options.align};` +
         (options.divider ? `border-top:1px solid ${RULE};` : '')
-      if (footer !== '') {
-        box.appendChild(
-          paragraph(doc, footer, 'font-size:13px;line-height:20px;color:inherit;', options.align),
-        )
+      if (footer !== '' || edit !== null) {
+        const node = paragraph(doc, footer, 'font-size:13px;line-height:20px;color:inherit;', options.align)
+        box.appendChild(edit === null ? node : editable(doc, node, 'footer', edit.footer))
       }
       if (options.showMeta) {
         const meta1 = translate('insert.meta', { turns: meta.turns, date: meta.date, time: meta.time })
@@ -2352,14 +2420,17 @@ window.__ModuleLoader__.load({
 
     /**
      * Put both blocks in place inside the clone and hand them back for measuring.
+     *
+     * @param edit - `{ title, subtitle, footer }` placeholders when the clone is the edit surface, null
+     *   for a capture.
      * @returns {{ head: Element | null, foot: Element | null }}
      */
-    function insertBlocks(clone, options, meta) {
+    function insertBlocks(clone, options, meta, edit = null) {
       const flow =
         (clone.hasAttribute(SCROLL_ATTRIBUTE) ? clone : clone.querySelector(`[${SCROLL_ATTRIBUTE}]`)) ?? clone
       const doc = clone.ownerDocument
-      const head = buildHead(doc, options, meta)
-      const foot = buildFoot(doc, options, meta)
+      const head = buildHead(doc, options, meta, edit)
+      const foot = buildFoot(doc, options, meta, edit)
       if (head !== null) flow.insertBefore(head, flow.firstChild)
       if (foot !== null) flow.appendChild(foot)
       return { head, foot }
@@ -2629,14 +2700,11 @@ window.__ModuleLoader__.load({
         // pruning done before it shifts the indexes and leaves a deeper video or iframe behind, which the
         // SVG path then fails to decode.
         sanitizeClone(app, clone)
-        // The composer shares this scroller; `dropSkipped` prunes it at whatever depth the layout puts
-        // it, so the seat never reaches the picture.
+        // Our own opt-out marker, then the chrome the reader switched off. The paging control and the
+        // composer are part of that same table now: both are visible on screen, so both are the reader's
+        // to keep rather than something the capture drops behind their back.
         dropSkipped(clone)
         dropChrome(clone, options)
-        // The paging control belongs to browsing, not to the transcript. It is dropped from the clone so
-        // the picture opens on real content.
-        const older = findLoadOlder(clone)
-        if (older !== null) older.remove()
         if (pruneClone !== undefined) pruneClone(clone)
         // The reader's own header and footer go in after the band is pruned, so a one-turn capture carries
         // them too, and inside the clone, so the SVG serializer sees them.
@@ -2749,6 +2817,139 @@ window.__ModuleLoader__.load({
       } finally {
         holder.remove()
       }
+    }
+
+    // ===== dom/stage.js ==============================================
+
+    /**
+     * The edit surface: a stand-in conversation, laid out in the conversation's own place.
+     *
+     * It is built exactly the way a capture is built — the same clone, the same chrome table, the same
+     * inserted blocks — with two differences: the chrome the reader switched off stays in the copy (dimmed
+     * and tagged, so a click brings it back), and the copy is laid out at full length inside a scrolling
+     * frame instead of being flattened into one tall canvas. What the reader sees while editing is
+     * therefore the very clone the renderer would paint, which is as close to "what you see is what you
+     * get" as a DOM copy gets.
+     *
+     * Nothing here writes to the live tree: the copy is a clone, so a click on a link or a button inside
+     * it cannot reach the application.
+     */
+
+
+    /** Overlay, frame and clone in one tree; the caller only has to mount `element`. */
+    function shell(doc, background, fontFamily, color) {
+      const element = doc.createElement('div')
+      element.setAttribute(EDITOR_ATTRIBUTE, 'true')
+      element.className = 'cs-ed'
+      element.style.setProperty('background', background)
+      element.style.setProperty('font-family', fontFamily)
+      element.style.setProperty('color', color)
+
+      const scroll = doc.createElement('div')
+      scroll.className = 'cs-ed-scroll'
+
+      const frame = doc.createElement('div')
+      frame.className = 'cs-ed-frame'
+
+      const stage = doc.createElement('div')
+      stage.setAttribute(STAGE_ATTRIBUTE, 'edit')
+      stage.className = 'cs-ed-stage'
+
+      // Animations restart in a clone, so a disclosure that animates open would be caught mid-flight and
+      // measured at the wrong height. Same guard as the capture, for the same reason.
+      const guard = doc.createElement('style')
+      guard.textContent =
+        `.cs-ed-stage *,.cs-ed-stage *::before,.cs-ed-stage *::after{` +
+        'animation:none !important;transition:none !important;scroll-behavior:auto !important;}'
+
+      frame.appendChild(guard)
+      frame.appendChild(stage)
+      scroll.appendChild(frame)
+      element.appendChild(scroll)
+      return { element, scroll, frame, stage }
+    }
+
+    /**
+     * Build the edit surface for a conversation.
+     *
+     * @param anchor - any element inside the conversation subtree.
+     * @param options - the reader's current switches.
+     * @param labels - the placeholders the inserted fields show when empty.
+     * @returns {{ element, clone, head, foot, destroy }} the mounted overlay and its parts.
+     */
+    function buildStage(anchor, options, labels) {
+      const scroller = anchor.closest(`[${SCROLL_ATTRIBUTE}]`)
+      if (scroller === null) throw new Error('conversation not found')
+      const doc = scroller.ownerDocument
+      const app = doc.getElementById('root') ?? scroller
+
+      const appRect = app.getBoundingClientRect()
+      const scrollerRect = scroller.getBoundingClientRect()
+      const clipLeft = Math.max(0, Math.round(scrollerRect.left - appRect.left))
+      const clipWidth = Math.max(MIN_WIDTH, Math.round(scroller.clientWidth))
+      const width = Math.max(clipWidth, Math.round(app.clientWidth || appRect.width))
+      const background = resolveBackground(scroller)
+      const styles = doc.defaultView.getComputedStyle(scroller)
+
+      const parts = shell(doc, background, styles.fontFamily, styles.color)
+
+      // The clone lives outside the application while it is edited, so it is wrapped in the same holder
+      // the capture uses: a zero-sized, clipped box that keeps the document's scroll geometry untouched.
+      // Here it is not fixed, because the reader has to see and scroll it.
+      const holder = doc.createElement('div')
+      holder.setAttribute(HOLDER_ATTRIBUTE, 'edit')
+      holder.className = 'cs-ed-holder'
+
+      const clone = app.cloneNode(true)
+      const scrollerClone = clone.hasAttribute(SCROLL_ATTRIBUTE)
+        ? clone
+        : clone.querySelector(`[${SCROLL_ATTRIBUTE}]`)
+
+      sanitizeClone(app, clone)
+      dropSkipped(clone)
+      paintChrome(clone, options)
+      const turns = clone.querySelectorAll(`[${TURN_ATTRIBUTE}]`).length
+      const blocks = insertBlocks(clone, options, { ...RAW_META, turns }, labels)
+
+      clone.style.setProperty('width', `${width}px`)
+      clone.style.setProperty('box-sizing', 'border-box')
+      clone.style.setProperty('height', 'auto')
+      clone.style.setProperty('min-height', '0')
+      clone.style.setProperty('max-height', 'none')
+      clone.style.setProperty('overflow', 'visible')
+      clone.style.setProperty('flex', 'none')
+      clone.style.setProperty('background', background)
+      // The frame shows the transcript column only, so the copy is shifted by the same inset the crop
+      // uses; the sidebar the copy still carries then sits outside the visible area.
+      clone.style.setProperty('margin-left', `${-clipLeft}px`)
+      if (scrollerClone !== null) {
+        scrollerClone.style.setProperty('height', 'auto')
+        scrollerClone.style.setProperty('max-height', 'none')
+        scrollerClone.style.setProperty('overflow', 'visible')
+      }
+
+      holder.appendChild(clone)
+      parts.stage.appendChild(holder)
+      parts.frame.style.setProperty('width', `${clipWidth}px`)
+      parts.frame.style.setProperty('--cs-edge', `${options.edge}px`)
+
+      if (DEBUG_MEASURE && typeof console !== 'undefined') {
+        console.info('[dsh-screenshot] editor', {
+          width,
+          clipWidth,
+          clipLeft,
+          turns,
+          head: blocks.head !== null,
+          foot: blocks.foot !== null,
+        })
+      }
+
+      const destroy = () => {
+        holder.remove()
+        parts.element.remove()
+      }
+
+      return { element: parts.element, scroll: parts.scroll, clone, head: blocks.head, foot: blocks.foot, destroy }
     }
 
     // ===== shell/status.js ===========================================
@@ -2978,6 +3179,293 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // ===== views/editor.js ===========================================
+
+    /**
+     * The edit surface, as a component.
+     *
+     * Two layers meet here. The frame, the toolbar and the menu are React; the picture between them is an
+     * element tree built imperatively by `dom/stage.js` — the same clone a capture renders, laid out at
+     * full length. That split is deliberate: the clone has to be a copy of the live application, so it is
+     * cloned from the DOM and then handed to a container ref, while everything around it is ordinary UI.
+     *
+     * A click on the picture toggles the piece under the pointer. A click on an inserted field edits it in
+     * place. The list behind the right button carries the same switches plus the two that have no separate
+     * element (the divider and the meta line), so every option is reachable from the surface it affects.
+     */
+
+
+    /** The name of one piece, for the tag a hidden part carries and for the menu row. */
+    function pieceLabel(t, id) {
+      if (id === 'nav') return t('settings.piece.nav')
+      if (id === 'attachments') return t('settings.piece.attachments')
+      if (id === 'process') return t('settings.piece.process')
+      if (id === 'clock') return t('settings.piece.clock')
+      if (id === 'toBottom') return t('settings.piece.toBottom')
+      if (id === 'handles') return t('settings.piece.handles')
+      if (id === 'paging') return t('settings.piece.paging')
+      if (id === 'composer') return t('settings.piece.composer')
+      if (id === 'head') return t('settings.piece.head')
+      if (id === 'foot') return t('settings.piece.foot')
+      if (id === 'meta') return t('settings.piece.meta')
+      if (id === 'divider') return t('settings.piece.divider')
+      return id
+    }
+
+    /** The switch a piece toggles; the inserted blocks and the two shared rules are not chrome. */
+    function optionOf(pieceId) {
+      const found = CHROME_PIECES.find((piece) => piece.id === pieceId)
+      return found === undefined ? null : found.option
+    }
+
+    /** The conversation the reader is looking at, or null when none is mounted. */
+    function findConversation() {
+      if (typeof document === 'undefined') return null
+      const scroller = document.querySelector(`[${SCROLL_ATTRIBUTE}]`)
+      return scroller instanceof Element && scroller.clientWidth > 0 ? scroller : null
+    }
+
+    /**
+     * The overlay.
+     *
+     * `revision` is the only thing that rebuilds the clone: a switch changes the drawn picture, so the
+     * copy is made again, while typing into a field leaves the copy alone — the typed text is already in
+     * it, and rebuilding on every keystroke would take the caret with it.
+     */
+    function CaptureEditor({ onClose }) {
+      const t = useTranslate()
+      const options = useOptions()
+      const optionsRef = useRef(options)
+      optionsRef.current = options
+      const hostRef = useRef(null)
+      const stageRef = useRef(null)
+      const [revision, setRevision] = useState(0)
+      const [missing, setMissing] = useState(false)
+      const [menu, setMenu] = useState(null)
+
+      const labels = useMemo(
+        () => ({
+          title: t('settings.edit.title'),
+          subtitle: t('settings.edit.subtitle'),
+          footer: t('settings.edit.footer'),
+        }),
+        [t],
+      )
+
+      useEffect(() => {
+        const anchor = findConversation()
+        if (anchor === null) {
+          setMissing(true)
+          return undefined
+        }
+        setMissing(false)
+        const stage = buildStage(anchor, optionsRef.current, {
+          title: String(labels.title),
+          subtitle: String(labels.subtitle),
+          footer: String(labels.footer),
+        })
+        stageRef.current = stage
+        if (hostRef.current !== null) hostRef.current.replaceChildren(stage.element)
+        return () => {
+          stage.destroy()
+          stageRef.current = null
+        }
+      }, [revision, labels])
+
+      // Every piece carries the same affordance: a click flips its switch, a right click opens the list.
+      // Both are bound once per built copy, on the copy's own root, so nothing reaches the application.
+      useEffect(() => {
+        const stage = stageRef.current
+        if (stage === null) return undefined
+        const root = stage.element
+
+        const toggle = (pieceId) => {
+          const option = optionOf(pieceId)
+          if (option === null) return
+          writeOptions({ [option]: optionsRef.current[option] !== true })
+          setRevision((value) => value + 1)
+        }
+
+        const onClick = (event) => {
+          const field = event.target instanceof Element ? event.target.closest(`[${FIELD_ATTRIBUTE}]`) : null
+          if (field !== null) return
+          event.preventDefault()
+          event.stopPropagation()
+          const piece = event.target instanceof Element ? event.target.closest(`[${PIECE_ATTRIBUTE}]`) : null
+          if (piece !== null) toggle(piece.getAttribute(PIECE_ATTRIBUTE))
+        }
+
+        const onContextMenu = (event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          const piece = event.target instanceof Element ? event.target.closest(`[${PIECE_ATTRIBUTE}]`) : null
+          setMenu({ x: event.clientX, y: event.clientY, piece: piece === null ? null : piece.getAttribute(PIECE_ATTRIBUTE) })
+        }
+
+        const onInput = (event) => {
+          const field = event.target instanceof Element ? event.target.closest(`[${FIELD_ATTRIBUTE}]`) : null
+          if (field === null) return
+          const name = field.getAttribute(FIELD_ATTRIBUTE)
+          const text = field.textContent ?? ''
+          if (text === '') field.setAttribute('data-empty', 'true')
+          else field.removeAttribute('data-empty')
+          writeOptions({ [name]: text })
+        }
+
+        const onKeyDown = (event) => {
+          const field = event.target instanceof Element ? event.target.closest(`[${FIELD_ATTRIBUTE}]`) : null
+          if (field !== null && event.key === 'Enter') {
+            event.preventDefault()
+            field.blur()
+          }
+        }
+
+        root.addEventListener('click', onClick)
+        root.addEventListener('contextmenu', onContextMenu)
+        root.addEventListener('input', onInput)
+        root.addEventListener('keydown', onKeyDown)
+        return () => {
+          root.removeEventListener('click', onClick)
+          root.removeEventListener('contextmenu', onContextMenu)
+          root.removeEventListener('input', onInput)
+          root.removeEventListener('keydown', onKeyDown)
+        }
+      }, [revision])
+
+      // The tag a piece carries says how it stands, so a reader who only hovers still learns what a click
+      // would do. Rebuilt with the copy, because the copy is what the tag is attached to.
+      useEffect(() => {
+        const stage = stageRef.current
+        if (stage === null) return
+        const current = optionsRef.current
+        for (const node of stage.clone.querySelectorAll(`[${PIECE_ATTRIBUTE}]`)) {
+          const id = node.getAttribute(PIECE_ATTRIBUTE)
+          const option = optionOf(id)
+          const hidden = option !== null && current[option] === true
+          node.setAttribute('title', `${pieceLabel(t, id)} · ${hidden ? t('settings.editor.hide') : t('settings.editor.show')}`)
+        }
+      }, [revision, t])
+
+      useEffect(() => {
+        const onKey = (event) => {
+          if (event.key === 'Escape') onClose()
+        }
+        document.addEventListener('keydown', onKey)
+        return () => document.removeEventListener('keydown', onKey)
+      }, [onClose])
+
+      if (native === undefined) return null
+      const { Button, Menu } = native
+
+      const items = []
+      for (const piece of CHROME_PIECES) {
+        items.push({ id: piece.id, label: pieceLabel(t, piece.id) })
+      }
+      items.push({ type: 'separator' })
+      items.push({ id: 'divider', label: pieceLabel(t, 'divider') })
+      items.push({ id: 'meta', label: pieceLabel(t, 'meta') })
+      items.push({ type: 'separator' })
+      items.push({ id: 'reset', label: t('settings.reset'), danger: true })
+
+      const selectedIds = []
+      for (const piece of CHROME_PIECES) {
+        if (options[piece.option] === true) selectedIds.push(piece.id)
+      }
+      if (options.divider) selectedIds.push('divider')
+      if (options.showMeta) selectedIds.push('meta')
+
+      const onSelect = (id) => {
+        setMenu(null)
+        if (id === 'reset') {
+          resetOptions()
+          setRevision((value) => value + 1)
+          return
+        }
+        if (id === 'divider') {
+          writeOptions({ divider: optionsRef.current.divider !== true })
+          setRevision((value) => value + 1)
+          return
+        }
+        if (id === 'meta') {
+          writeOptions({ showMeta: optionsRef.current.showMeta !== true })
+          setRevision((value) => value + 1)
+          return
+        }
+        const option = optionOf(id)
+        if (option === null) return
+        writeOptions({ [option]: optionsRef.current[option] !== true })
+        setRevision((value) => value + 1)
+      }
+
+      return h(
+        'div',
+        { className: 'cs-ed-wrap' },
+        h(
+          'div',
+          { className: 'cs-ed-bar' },
+          h(
+            'div',
+            { className: 'cs-ed-lead' },
+            h('div', { className: 'cs-ed-title' }, t('settings.title')),
+            h('div', { className: 'cs-ed-hint' }, missing ? t('settings.editor.noConversation') : t('settings.editor.hint')),
+          ),
+          h(
+            'div',
+            { className: 'cs-ed-actions' },
+            h(Button, { variant: 'ghost', size: 'sm', onClick: () => { resetOptions(); setRevision((value) => value + 1) } }, t('settings.reset')),
+            h(Button, { variant: 'primary', size: 'sm', onClick: onClose }, t('settings.editor.done')),
+          ),
+        ),
+        h('div', { className: 'cs-ed-host', ref: hostRef }),
+        menu === null
+          ? null
+          : h(Menu, {
+              open: true,
+              anchorPoint: { x: menu.x, y: menu.y },
+              items,
+              selectedIds,
+              onSelect,
+              onClose: () => setMenu(null),
+              portal: true,
+              align: 'start',
+              side: 'bottom',
+            }),
+      )
+    }
+
+    /** The mounted root, so opening twice cannot stack two surfaces. */
+    let mounted = null
+
+    /** Whether the edit surface is open. */
+    function editorOpen() {
+      return mounted !== null
+    }
+
+    /**
+     * Open the edit surface over the conversation, or do nothing when it is already open or the host
+     * offers no React root to mount it in.
+     */
+    function openEditor() {
+      if (mounted !== null || reactDom === undefined) return
+      const host = document.createElement('div')
+      host.className = 'cs-ed-root'
+      document.body.appendChild(host)
+      const root = reactDom.createRoot(host)
+      const close = () => {
+        root.unmount()
+        host.remove()
+        mounted = null
+      }
+      mounted = { host, root, close }
+      root.render(h(CaptureEditor, { onClose: close }))
+    }
+
+    /** Close the edit surface if it is open. */
+    function closeEditor() {
+      if (mounted === null) return
+      mounted.close()
+    }
+
     // ===== views/buttons.js ==========================================
 
     /**
@@ -3102,6 +3590,12 @@ window.__ModuleLoader__.load({
           captureNow({ kind: 'whole' })
           return
         }
+        if (id === 'layout') {
+          // The picture is shaped where it is drawn, so the menu only opens the surface over the
+          // conversation; every switch lives on the clone the capture would use.
+          openEditor()
+          return
+        }
         if (id === 'last') {
           // The last entry is the turn that is open right now, if the model is still answering.
           const last = turns.length - 1
@@ -3122,6 +3616,7 @@ window.__ModuleLoader__.load({
         { id: 'whole', label: t('menu.whole') },
         { id: 'last', label: t('menu.last'), disabled: turns.length === 0 },
         { id: 'pick', label: t('menu.pick'), disabled: turns.length === 0 },
+        { id: 'layout', label: t('menu.layout') },
       ]
 
       return h(
@@ -3201,399 +3696,81 @@ window.__ModuleLoader__.load({
       })
     }
 
-    // ===== views/preview.js ==========================================
-
-    /**
-     * The interactive preview at the top of the settings section.
-     *
-     * A miniature transcript, drawn with the host's own components and the same markers the capture
-     * reads. Clicking a piece hides it, clicking it again brings it back, and a right-click opens the
-     * full menu: every toggle as a checkable item, plus the two text blocks. What the preview shows is
-     * what `dom/clone.js` will prune and what `dom/inserts.js` will add, so the panel explains itself
-     * without a paragraph per switch.
-     */
-
-
-    /** The six pieces the capture can drop, in the order the preview stacks them. */
-    const PIECES = [
-      { id: 'nav', flag: 'hideNav' },
-      { id: 'attachments', flag: 'hideAttachments' },
-      { id: 'process', flag: 'hideProcess' },
-      { id: 'clock', flag: 'hideClock' },
-      { id: 'toBottom', flag: 'hideToBottom' },
-      { id: 'handles', flag: 'hideHandles' },
-    ]
-
-    /** A piece's name, in the reader's language. Literal keys so the i18n check can see them. */
-    function pieceLabel(t, id) {
-      if (id === 'nav') return t('settings.piece.nav')
-      if (id === 'attachments') return t('settings.piece.attachments')
-      if (id === 'process') return t('settings.piece.process')
-      if (id === 'clock') return t('settings.piece.clock')
-      if (id === 'toBottom') return t('settings.piece.toBottom')
-      if (id === 'handles') return t('settings.piece.handles')
-      if (id === 'head') return t('settings.piece.head')
-      if (id === 'foot') return t('settings.piece.foot')
-      if (id === 'meta') return t('settings.piece.meta')
-      if (id === 'divider') return t('settings.piece.divider')
-      return id
-    }
-
-    /** One hideable piece: a hit area when it is shown, a dashed reminder when it is not. */
-    function Piece({ id, label, hidden, onToggle, onContextMenu, children, className }) {
-      return h(
-        'div',
-        {
-          className: `cs-prev-piece ${hidden ? 'is-off' : ''} ${className ?? ''}`.trim(),
-          onClick: onToggle,
-          onContextMenu,
-          role: 'button',
-          tabIndex: 0,
-          onKeyDown: (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              onToggle()
-            }
-          },
-          title: label,
-        },
-        hidden ? h('span', { className: 'cs-prev-off' }, label) : children,
-      )
-    }
-
-    /** The header block: two lines of prose, or a placeholder when both are empty. */
-    function HeadBlock({ options, t, onEdit, onContextMenu }) {
-      const empty = options.title.length === 0 && options.subtitle.length === 0
-      return h(
-        'div',
-        {
-          className: `cs-prev-insert ${empty ? 'is-empty' : ''}`.trim(),
-          onClick: onEdit,
-          onContextMenu,
-          role: 'button',
-          tabIndex: 0,
-          title: t('settings.menu.head'),
-        },
-        empty
-          ? h('span', { className: 'cs-prev-off' }, `+ ${t('settings.menu.head')}`)
-          : [
-              h('div', { key: 'title', className: 'cs-prev-title' }, options.title || t('settings.edit.untitled')),
-              options.subtitle.length > 0
-                ? h('div', { key: 'sub', className: 'cs-prev-subtitle' }, options.subtitle)
-                : null,
-              options.divider ? h('div', { key: 'rule', className: 'cs-prev-rule' }) : null,
-            ],
-      )
-    }
-
-    /** The footer block: the reader's own line, then the metadata line the capture can add. */
-    function FootBlock({ options, t, onEdit, onContextMenu }) {
-      const empty = options.footer.length === 0 && !options.showMeta
-      return h(
-        'div',
-        {
-          className: `cs-prev-insert ${empty ? 'is-empty' : ''}`.trim(),
-          onClick: onEdit,
-          onContextMenu,
-          role: 'button',
-          tabIndex: 0,
-          title: t('settings.menu.foot'),
-        },
-        empty
-          ? h('span', { className: 'cs-prev-off' }, `+ ${t('settings.menu.foot')}`)
-          : [
-              options.divider ? h('div', { key: 'rule', className: 'cs-prev-rule' }) : null,
-              options.footer.length > 0
-                ? h('div', { key: 'text', className: 'cs-prev-footer' }, options.footer)
-                : null,
-              options.showMeta
-                ? h('div', { key: 'meta', className: 'cs-prev-meta' }, t('insert.metaSample'))
-                : null,
-            ],
-      )
-    }
-
-    /** The editor behind a click on either inserted block. */
-    function EditModal({ mode, draft, t, onChange, onClose, onSave }) {
-      const Modal = native?.Modal
-      const Input = native?.Input
-      const Switch = native?.Switch
-      const Button = native?.Button
-      if (!Modal) return null
-
-      const head = mode === 'head'
-      const field = (key, label, placeholder, maxLength) =>
-        h(
-          'label',
-          { key, className: 'cs-prev-field' },
-          h('span', { className: 'cs-set-label' }, label),
-          Input
-            ? h(Input, {
-                className: 'cs-prev-input',
-                value: draft[key],
-                maxLength,
-                placeholder,
-                onChange: (event) => onChange(key, event.target.value),
-              })
-            : h('input', {
-                className: 'cs-prev-input',
-                value: draft[key],
-                maxLength,
-                placeholder,
-                onChange: (event) => onChange(key, event.target.value),
-              }),
-        )
-
-      const toggle = (key, label) =>
-        Switch
-          ? h(Switch, { key, checked: draft[key], label, onChange: (next) => onChange(key, next) })
-          : h(
-              'label',
-              { key, className: 'cs-set-row cs-set-row-check' },
-              h('span', { className: 'cs-set-label' }, label),
-              h('input', {
-                className: 'cs-set-box',
-                type: 'checkbox',
-                checked: draft[key],
-                onChange: (event) => onChange(key, event.target.checked),
-              }),
-            )
-
-      const footer = Button
-        ? [
-            h(Button, { key: 'cancel', variant: 'ghost', size: 'sm', onClick: onClose }, t('settings.edit.cancel')),
-            h(Button, { key: 'save', variant: 'primary', size: 'sm', onClick: onSave }, t('settings.edit.save')),
-          ]
-        : [
-            h('button', { key: 'cancel', type: 'button', className: 'cs-set-reset', onClick: onClose }, t('settings.edit.cancel')),
-            h('button', { key: 'save', type: 'button', className: 'cs-set-reset', onClick: onSave }, t('settings.edit.save')),
-          ]
-
-      return h(
-        Modal,
-        {
-          open: true,
-          onClose,
-          title: head ? t('settings.menu.head') : t('settings.menu.foot'),
-          closeLabel: t('settings.edit.cancel'),
-          footer,
-        },
-        h(
-          'div',
-          { className: 'cs-prev-editor' },
-          head
-            ? field('title', t('settings.edit.title'), t('settings.add.titlePlaceholder'), INSERT_MAX_CHARS.title)
-            : field('footer', t('settings.edit.footer'), t('insert.metaSample'), INSERT_MAX_CHARS.footer),
-          head
-            ? field('subtitle', t('settings.edit.subtitle'), t('settings.add.titlePlaceholder'), INSERT_MAX_CHARS.subtitle)
-            : null,
-          h('p', { className: 'cs-set-desc' }, t('settings.edit.tokens')),
-          toggle('divider', t('settings.piece.divider')),
-          head ? null : toggle('showMeta', t('settings.piece.meta')),
-        ),
-      )
-    }
-
-    /** The panel: the mock transcript, its menu, and the editor it opens. */
-    function Preview() {
-      const t = useTranslate()
-      const options = useOptions()
-      const [open, setOpen] = useState(false)
-      const [point, setPoint] = useState({ x: 0, y: 0 })
-      const [draft, setDraft] = useState(null)
-      const countRef = useRef(0)
-
-      const toggle = useCallback((flag) => {
-        writeOptions({ [flag]: !options[flag] })
-      }, [options])
-
-      const openMenu = useCallback((event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        setPoint({ x: event.clientX, y: event.clientY })
-        setOpen(true)
-      }, [])
-
-      const edit = useCallback((mode) => {
-        countRef.current += 1
-        setOpen(false)
-        setDraft({
-          mode,
-          title: options.title,
-          subtitle: options.subtitle,
-          footer: options.footer,
-          showMeta: options.showMeta,
-          divider: options.divider,
-        })
-      }, [options])
-
-      const Menu = native?.Menu
-      const hiddenIds = PIECES.filter((piece) => options[piece.flag]).map((piece) => piece.flag)
-      const items = [
-        ...PIECES.map((piece) => ({ id: piece.flag, label: pieceLabel(t, piece.id) })),
-        { type: 'separator', id: 'sep-inserts' },
-        { id: 'head', label: options.title.length > 0 || options.subtitle.length > 0 ? t('settings.menu.headEdit') : t('settings.menu.head') },
-        { id: 'foot', label: options.footer.length > 0 || options.showMeta ? t('settings.menu.footEdit') : t('settings.menu.foot') },
-        { type: 'separator', id: 'sep-reset' },
-        { id: 'reset', label: t('settings.reset'), danger: true },
-      ]
-
-      const onSelect = (id) => {
-        if (id === 'head' || id === 'foot') {
-          edit(id)
-          return
-        }
-        setOpen(false)
-        if (id === 'reset') {
-          resetOptions()
-          return
-        }
-        if (id in options) toggle(id)
-      }
-
-      const piece = (id, children, className) => {
-        const entry = PIECES.find((candidate) => candidate.id === id)
-        return h(
-          Piece,
-          {
-            key: id,
-            id,
-            label: pieceLabel(t, id),
-            hidden: Boolean(options[entry.flag]),
-            onToggle: () => toggle(entry.flag),
-            onContextMenu: openMenu,
-            className,
-          },
-          children,
-        )
-      }
-
-      return h(
-        'div',
-        { className: 'cs-prev-wrap' },
-        h(
-          'div',
-          {
-            className: `cs-prev align-${options.align}`,
-            style: { padding: `${options.edge}px` },
-            onContextMenu: openMenu,
-          },
-          piece('nav', h('span', { className: 'cs-prev-rail' }, t('settings.sample.nav'))),
-          h(HeadBlock, { options, t, onEdit: () => edit('head'), onContextMenu: openMenu }),
-          h(
-            'div',
-            { className: 'cs-prev-turn' },
-            h('div', { className: 'cs-prev-bubble' }, t('settings.sample.user')),
-            piece('attachments', h('div', { className: 'cs-prev-files' }, t('settings.sample.files'))),
-            piece('process', h('div', { className: 'cs-prev-think' }, t('settings.sample.process'))),
-            h('div', { className: 'cs-prev-answer' }, t('settings.sample.answer')),
-            piece('clock', h('span', { className: 'cs-prev-clock' }, t('settings.sample.clock'))),
-          ),
-          h(FootBlock, { options, t, onEdit: () => edit('foot'), onContextMenu: openMenu }),
-          piece('toBottom', h('span', { className: 'cs-prev-chip' }, t('settings.sample.toBottom'))),
-          piece('handles', h('span', { className: 'cs-prev-chip' }, t('settings.sample.handles'))),
-        ),
-        Menu
-          ? h(Menu, {
-              open,
-              anchorPoint: point,
-              items,
-              selectedIds: hiddenIds,
-              onSelect,
-              onClose: () => setOpen(false),
-              portal: true,
-              align: 'start',
-            })
-          : null,
-        draft
-          ? h(EditModal, {
-              mode: draft.mode,
-              draft,
-              t,
-              onChange: (key, value) => setDraft((current) => ({ ...current, [key]: value })),
-              onClose: () => setDraft(null),
-              onSave: () => {
-                const patch = draft.mode === 'head'
-                  ? { title: draft.title, subtitle: draft.subtitle, divider: draft.divider }
-                  : { footer: draft.footer, showMeta: draft.showMeta, divider: draft.divider }
-                writeOptions(patch)
-                setDraft(null)
-              },
-            })
-          : null,
-      )
-    }
-
     // ===== views/settings.js =========================================
 
     /**
-     * The settings panel: a miniature of the capture, the menu it answers to, and three choices about
-     * the layout.
+     * The settings section: where the picture is described, and the door into the surface that draws it.
      *
-     * The preview is the form. Every chrome piece can be switched off by clicking it in the mock
-     * transcript, every added block is edited where it will appear, and the menu behind a right-click
-     * repeats all of it as checkable items for anyone who prefers a list. Values are written through
-     * `writeOptions`, so a change applies to the next capture and survives a reload without a host
-     * round-trip.
+     * The section no longer draws a stand-in of its own. What the picture contains is decided on the
+     * picture — in the conversation's own place, where every piece the capture can hold is already laid
+     * out — so the rows here are the three that have no element to click (alignment, margin, resolution)
+     * and the reset. One description of the state, in the place the state applies to.
      */
 
 
-    /** One choice out of a short list, opened from a native menu when the host ships one. */
+    /** Whether a conversation is mounted, so the door can say why it is closed. */
+    function conversationReady() {
+      if (typeof document === 'undefined') return false
+      const scroller = document.querySelector(`[${SCROLL_ATTRIBUTE}]`)
+      return scroller instanceof Element ? scroller.clientWidth > 0 : false
+    }
+
+    /** One setting, with the host's own selector behind a button. */
     function MenuRow({ title, description, value, entries, onSelect }) {
       const [open, setOpen] = useState(false)
-      const [point, setPoint] = useState({ x: 0, y: 0 })
-      const Menu = native?.Menu
-      const Button = native?.Button
-      const shown = entries.find((entry) => entry[0] === value)
-
-      if (!Menu || !Button) {
+      const anchorRef = react.useRef(null)
+      const selected = entries.find((entry) => entry.id === value)
+      const label = selected === undefined ? value : selected.label
+      if (native === undefined) {
         return h(
-          'label',
+          'div',
           { className: 'cs-set-row' },
           h(
-            'span',
+            'div',
             { className: 'cs-set-text' },
-            h('span', { className: 'cs-set-label' }, title),
-            h('span', { className: 'cs-set-desc' }, description),
+            h('div', { className: 'cs-set-label' }, title),
+            h('div', { className: 'cs-set-desc' }, description),
           ),
           h(
             'select',
-            { className: 'cs-set-select', value, onChange: (event) => onSelect(event.target.value) },
-            entries.map(([optionValue, optionLabel]) =>
-              h('option', { key: optionValue, value: optionValue }, optionLabel),
-            ),
+            {
+              className: 'cs-set-select',
+              value,
+              onChange: (event) => onSelect(event.target.value),
+            },
+            entries.map((entry) => h('option', { key: entry.id, value: entry.id }, entry.label)),
           ),
         )
       }
-
+      const { Button, Menu } = native
       return h(
         'div',
         { className: 'cs-set-row' },
         h(
-          'span',
+          'div',
           { className: 'cs-set-text' },
-          h('span', { className: 'cs-set-label' }, title),
-          h('span', { className: 'cs-set-desc' }, description),
+          h('div', { className: 'cs-set-label' }, title),
+          h('div', { className: 'cs-set-desc' }, description),
         ),
         h(
           'div',
-          { className: 'cs-set-picker' },
-          h(Button, {
-            variant: 'outline',
-            size: 'sm',
-            onClick: (event) => {
-              const box = event.currentTarget.getBoundingClientRect()
-              setPoint({ x: box.left, y: box.bottom + 4 })
-              setOpen((current) => !current)
+          { className: 'cs-set-picker', ref: anchorRef },
+          h(
+            Button,
+            {
+              variant: 'outline',
+              size: 'sm',
+              onClick: () => setOpen((value2) => !value2),
             },
-          }, shown ? shown[1] : value),
+            label,
+          ),
           h(Menu, {
             open,
-            anchorPoint: point,
+            anchorRef,
+            items: entries,
+            selectedId: value,
             align: 'end',
             side: 'bottom',
-            selectedId: value,
-            items: entries.map(([optionValue, optionLabel]) => ({ id: optionValue, label: optionLabel })),
             onSelect: (id) => {
               setOpen(false)
               onSelect(id)
@@ -3604,63 +3781,86 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /** The section body mounted at `settings.section`. */
     function SettingsSection() {
       const t = useTranslate()
       const options = useOptions()
+      const ready = useMemo(() => conversationReady(), [])
+
+      const edgeEntries = EDGE_CHOICES.map((choice) => ({
+        id: String(choice),
+        label:
+          choice === EDGE_CHOICES[0]
+            ? t('settings.edge.tight')
+            : choice === EDGE_CHOICES[EDGE_CHOICES.length - 1]
+              ? t('settings.edge.loose')
+              : t('settings.edge.normal'),
+      }))
+      const currentEdge = String(options.edge)
 
       return h(
         'div',
         { className: 'cs-set' },
-        h('p', { className: 'cs-set-intro' }, t('settings.intro')),
-        h(Preview, {}),
-        h('p', { className: 'cs-set-desc cs-prev-hint' }, t('settings.previewHint')),
-
-        h(MenuRow, {
-          title: t('settings.layout.align'),
-          description: t('settings.layout.alignHint'),
-          value: options.align,
-          entries: [
-            ['left', t('settings.align.left')],
-            ['center', t('settings.align.center')],
-          ],
-          onSelect: (value) => writeOptions({ align: value }),
-        }),
-        h(MenuRow, {
-          title: t('settings.layout.edge'),
-          description: t('settings.layout.edgeHint'),
-          value: String(options.edge),
-          entries: [
-            [String(EDGE_CHOICES[0]), t('settings.edge.tight')],
-            [String(EDGE_CHOICES[1]), t('settings.edge.normal')],
-            [String(EDGE_CHOICES[2]), t('settings.edge.loose')],
-          ],
-          onSelect: (value) => writeOptions({ edge: Number(value) }),
-        }),
-        h(MenuRow, {
-          title: t('settings.layout.scale'),
-          description: t('settings.layout.scaleHint'),
-          value: options.scale,
-          entries: [
-            [SCALE_CHOICES[0], t('settings.scale.auto')],
-            [SCALE_CHOICES[1], t('settings.scale.x1')],
-            [SCALE_CHOICES[2], t('settings.scale.x2')],
-            [SCALE_CHOICES[3], t('settings.scale.x3')],
-          ],
-          onSelect: (value) => writeOptions({ scale: value }),
-        }),
-
+        h('div', { className: 'cs-set-intro' }, t('settings.intro')),
+        h(
+          'div',
+          { className: 'cs-set-open' },
+          native === undefined
+            ? null
+            : h(
+                native.Button,
+                { variant: 'primary', size: 'sm', disabled: !ready, onClick: () => openEditor() },
+                t('settings.editor.open'),
+              ),
+          ready ? null : h('div', { className: 'cs-set-desc' }, t('settings.editor.noConversation')),
+          h('div', { className: 'cs-set-desc' }, t('settings.editor.hint')),
+        ),
+        h(
+          'div',
+          { className: 'cs-set-group' },
+          h(
+            MenuRow,
+            {
+              title: t('settings.layout.align'),
+              description: t('settings.layout.alignHint'),
+              value: options.align,
+              entries: [
+                { id: 'left', label: t('settings.align.left') },
+                { id: 'center', label: t('settings.align.center') },
+              ],
+              onSelect: (id) => writeOptions({ align: id }),
+            },
+          ),
+          h(MenuRow, {
+            title: t('settings.layout.edge'),
+            description: t('settings.layout.edgeHint'),
+            value: currentEdge,
+            entries: edgeEntries,
+            onSelect: (id) => writeOptions({ edge: Number(id) }),
+          }),
+          h(MenuRow, {
+            title: t('settings.layout.scale'),
+            description: t('settings.layout.scaleHint'),
+            value: options.scale,
+            entries: [
+              { id: 'auto', label: t('settings.scale.auto') },
+              { id: SCALE_CHOICES[1], label: t('settings.scale.x1') },
+              { id: SCALE_CHOICES[2], label: t('settings.scale.x2') },
+              { id: SCALE_CHOICES[3], label: t('settings.scale.x3') },
+            ],
+            onSelect: (id) => writeOptions({ scale: id }),
+          }),
+        ),
         h(
           'div',
           { className: 'cs-set-foot' },
-          h('span', { className: 'cs-set-desc' }, t('settings.resetHint')),
+          h(
+            'div',
+            { className: 'cs-set-desc' },
+            t('settings.resetHint'),
+          ),
           h(
             'button',
-            {
-              type: 'button',
-              className: 'cs-set-reset',
-              onClick: () => resetOptions(),
-            },
+            { type: 'button', className: 'cs-set-reset', onClick: () => resetOptions() },
             t('settings.reset'),
           ),
         ),

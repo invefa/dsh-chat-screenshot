@@ -68,11 +68,24 @@ Documentation is English with a `.zh-CN.md` edition.
   must never need a restart. The settings section is a single `settings.section` registration: the
   host draws the navigation label and hands the component `close` alone, so the section renders rows,
   not a heading.
-- The settings panel is a preview, not a form. It draws the same markers a capture reads at panel
-  size, so a switch is a piece you click in the mock transcript and an added block is edited where it
-  will appear; a list of switches beside the mock would be a second description of the same state and
-  the two would drift. Anything the preview shows must come from `readOptions()` — a control that
-  updates local state instead of the stored options shows a picture no capture will ever make.
+- The settings shape the picture where it is drawn. "Adjust the shot" opens an editor over the
+  conversation: the same staged clone a capture renders, mounted at full length in a scrolling frame,
+  with every piece still in place. A switch is a click on the piece itself, and a switched-off piece
+  dims and stays where the picture would draw it — no setting is invisible, and no part is
+  special-cased into permanent absence. Anything the editor shows comes from `readOptions()`; a
+  control that kept its own state would show a picture no capture will ever make.
+- `dom/clone.js` holds the piece table, and it is the only list of what can be switched off: the
+  capture drops what it names (`dropChrome`) and the editor marks what it holds (`paintChrome`). A
+  part that could ever appear in a picture belongs in that table, never in an unconditional removal at
+  a call site — the load-earlier control and the composer used to be cut that way, which is exactly how
+  they became settings nobody could find.
+- The editor's root is mounted on `document.body`. The overlay is `position: fixed`, and inside a
+  subtree that carries a `transform` or a `filter` it would be positioned against that ancestor
+  instead of the viewport.
+- The editor rebuilds the clone on a revision counter, not on the options object. Typed text goes
+  straight into the stored options, and rebuilding on every keystroke would take the caret out of the
+  field being written in. Clicks inside the copy are cancelled: the clone carries no React listeners,
+  so a link or a button there would otherwise navigate the live page.
 - The right-click menu and the turn chooser are the host's own components. `shell/runtime.js` exposes
   them as `native`, read from the `@deepseek-ai/dsh-client-ui-primitives` seed word that the module
   system hands every package; a hand-rolled menu would lose the theme, the focus trap and the keyboard
@@ -100,10 +113,10 @@ node checks/serve.mjs   # then open http://127.0.0.1:8712/checks/dom.html
 ```
 
 The first four cover the bundle contract, the language tables and the pure helpers. `checks/dom.html`
-runs the parts that need a document — the paging labels, the chrome switches, the inserted blocks and
-the crop they feed — against a fixture built from the host's markers, and prints PASS/FAIL in the tab
-title with the per-case detail on `window.__verify`. `checks/serve.mjs` exists because a browser
-refuses a module graph loaded from `file://`.
+runs the parts that need a document — the paging labels, the piece table, the editor's copy and the
+fields it opens, the inserted blocks and the crop they feed — against a fixture built from the host's
+markers, and prints PASS/FAIL in the tab title with the per-case detail on `window.__verify`.
+`checks/serve.mjs` exists because a browser refuses a module graph loaded from `file://`.
 
 None of them can tell whether the picture looks right: for that, load the page, click both cameras, and
 paste the result.

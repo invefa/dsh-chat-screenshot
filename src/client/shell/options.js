@@ -13,7 +13,14 @@ import { react } from './runtime.js'
 /** Storage key owned by this plugin. */
 export const STORAGE_KEY = 'chat-screenshot.options'
 
-/** The switches that drop a host subtree from the picture. */
+/**
+ * The switches that drop a host subtree from the picture.
+ *
+ * Every one of them is a piece of the transcript the reader can see on screen, and every one is
+ * offered in the edit surface, so nothing is dropped by a rule the reader cannot find: the paging
+ * control and the composer used to leave the picture unconditionally, which made two visible parts of
+ * the conversation impossible to keep.
+ */
 export const HIDE_FLAGS = [
   'hideClock',
   'hideProcess',
@@ -21,6 +28,8 @@ export const HIDE_FLAGS = [
   'hideNav',
   'hideHandles',
   'hideToBottom',
+  'hidePaging',
+  'hideComposer',
 ]
 
 /** The free-text blocks the picture can carry, with the length each one is capped at. */
@@ -38,6 +47,8 @@ export const OPTION_DEFAULTS = Object.freeze({
   hideNav: true,
   hideHandles: true,
   hideToBottom: true,
+  hidePaging: true,
+  hideComposer: true,
   title: '',
   subtitle: '',
   footer: '',

@@ -10,6 +10,7 @@ import { captureTurn, captureTurns, turnList } from '../dom/turn.js'
 import { hasOlderPages, loadFullHistory } from '../dom/paging.js'
 import { CameraIcon, CheckIcon } from './icons.js'
 import { CaptureMenu, TurnPicker } from './menu.js'
+import { openEditor } from './editor.js'
 
 /**
  * One button with its spinner, its success check and its toast.
@@ -127,6 +128,12 @@ export function ScreenshotButton({ sessionId }) {
       captureNow({ kind: 'whole' })
       return
     }
+    if (id === 'layout') {
+      // The picture is shaped where it is drawn, so the menu only opens the surface over the
+      // conversation; every switch lives on the clone the capture would use.
+      openEditor()
+      return
+    }
     if (id === 'last') {
       // The last entry is the turn that is open right now, if the model is still answering.
       const last = turns.length - 1
@@ -147,6 +154,7 @@ export function ScreenshotButton({ sessionId }) {
     { id: 'whole', label: t('menu.whole') },
     { id: 'last', label: t('menu.last'), disabled: turns.length === 0 },
     { id: 'pick', label: t('menu.pick'), disabled: turns.length === 0 },
+    { id: 'layout', label: t('menu.layout') },
   ]
 
   return h(

@@ -25,6 +25,16 @@ function seedModule(specifier) {
 
 export const native = seedModule('@deepseek-ai/dsh-client-ui-primitives')
 
+/**
+ * A React root of the plugin's own.
+ *
+ * The edit surface stands in the conversation's place, so it must not be rendered inside the
+ * composer's subtree: a `position:fixed` box is still positioned against an ancestor that carries a
+ * transform or a filter. A root mounted on the document body is outside every such ancestor, which
+ * also keeps the application's React tree from re-rendering the overlay.
+ */
+export const reactDom = seedModule('react-dom/client')
+
 export const react = loaded ? require('react') : undefined
 
 export const h = loaded ? react.createElement : undefined

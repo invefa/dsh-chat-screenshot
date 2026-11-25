@@ -13,7 +13,7 @@
  * transcript in either theme.
  */
 
-import { FOOT_ATTRIBUTE, HEAD_ATTRIBUTE, SCROLL_ATTRIBUTE } from '../shell/const.js'
+import { FIELD_ATTRIBUTE, FOOT_ATTRIBUTE, HEAD_ATTRIBUTE, SCROLL_ATTRIBUTE } from '../shell/const.js'
 import { translate } from '../shell/i18n.js'
 /** Muted copy and hairline rules, chosen to stay legible on a light and on a dark transcript. */
 const MUTED = '#8c8c8c'
@@ -45,6 +45,27 @@ export function fillTokens(text, meta) {
     .replace(/\{time\}/g, meta.time)
 }
 
+/** The placeholders the meta line substitutes, handed back unchanged so the editor shows the tokens. */
+export const RAW_META = Object.freeze({ turns: '{turns}', date: '{date}', time: '{time}' })
+
+/**
+ * Turn one block of text into a field the reader can type into, in place.
+ *
+ * `contenteditable="plaintext-only"` keeps a paste from arriving with markup the picture cannot paint,
+ * and the attribute that tags the field is also what the overlay listens for when it writes the value
+ * back. An empty field carries its hint in an attribute, so CSS can draw it and `textContent` stays
+ * empty: the saved value is never the hint.
+ */
+function editable(doc, node, field, placeholder) {
+  node.setAttribute('contenteditable', 'plaintext-only')
+  node.setAttribute('spellcheck', 'false')
+  node.setAttribute(FIELD_ATTRIBUTE, field)
+  node.setAttribute('data-cs-placeholder', placeholder)
+  node.classList.add('cs-ed-field')
+  if (node.textContent === '') node.setAttribute('data-empty', 'true')
+  return node
+}
+
 /** One block of text with the geometry both renderers agree on. */
 function paragraph(doc, text, style, align) {
   const node = doc.createElement('div')
@@ -53,44 +74,56 @@ function paragraph(doc, text, style, align) {
   return node
 }
 
-/** The header block, or null when the reader asked for neither a title nor a subtitle. */
-export function buildHead(doc, options, meta) {
+/**
+ * The header block, or null when the reader asked for neither a title nor a subtitle.
+ *
+ * In edit mode the block is always built, even with both fields empty: the reader needs a place to
+ * click before there is anything to show, and the capture path never sees that empty box.
+ *
+ * @param edit - `{ title, subtitle }` placeholders, or null for the capture.
+ */
+export function buildHead(doc, options, meta, edit = null) {
   const title = fillTokens(options.title, meta)
   const subtitle = fillTokens(options.subtitle, meta)
-  if (title === '' && subtitle === '') return null
+  if (edit === null && title === '' && subtitle === '') return null
   const box = doc.createElement('div')
   box.setAttribute(HEAD_ATTRIBUTE, 'true')
   box.style.cssText =
     `display:block;box-sizing:border-box;padding:2px 0 ${options.divider ? 16 : 12}px;` +
     `text-align:${options.align};` +
     (options.divider ? `border-bottom:1px solid ${RULE};` : '')
-  if (title !== '') {
-    box.appendChild(
-      paragraph(doc, title, 'font-size:17px;line-height:24px;font-weight:600;color:inherit;', options.align),
-    )
+  if (title !== '' || edit !== null) {
+    const node = paragraph(doc, title, 'font-size:17px;line-height:24px;font-weight:600;color:inherit;', options.align)
+    box.appendChild(edit === null ? node : editable(doc, node, 'title', edit.title))
   }
-  if (subtitle !== '') {
-    box.appendChild(
-      paragraph(doc, subtitle, `margin-top:4px;font-size:13px;line-height:20px;color:${MUTED};`, options.align),
+  if (subtitle !== '' || edit !== null) {
+    const node = paragraph(
+      doc,
+      subtitle,
+      `margin-top:4px;font-size:13px;line-height:20px;color:${MUTED};`,
+      options.align,
     )
+    box.appendChild(edit === null ? node : editable(doc, node, 'subtitle', edit.subtitle))
   }
   return box
 }
 
-/** The footer block, or null when the reader asked for neither a footer nor the metadata line. */
-export function buildFoot(doc, options, meta) {
+/**
+ * The footer block, or null when the reader asked for neither a footer nor the metadata line.
+ * @param edit - `{ footer }` placeholder, or null for the capture.
+ */
+export function buildFoot(doc, options, meta, edit = null) {
   const footer = fillTokens(options.footer, meta)
-  if (footer === '' && !options.showMeta) return null
+  if (edit === null && footer === '' && !options.showMeta) return null
   const box = doc.createElement('div')
   box.setAttribute(FOOT_ATTRIBUTE, 'true')
   box.style.cssText =
     `display:block;box-sizing:border-box;padding:${options.divider ? 16 : 12}px 0 2px;` +
     `text-align:${options.align};` +
     (options.divider ? `border-top:1px solid ${RULE};` : '')
-  if (footer !== '') {
-    box.appendChild(
-      paragraph(doc, footer, 'font-size:13px;line-height:20px;color:inherit;', options.align),
-    )
+  if (footer !== '' || edit !== null) {
+    const node = paragraph(doc, footer, 'font-size:13px;line-height:20px;color:inherit;', options.align)
+    box.appendChild(edit === null ? node : editable(doc, node, 'footer', edit.footer))
   }
   if (options.showMeta) {
     const meta1 = translate('insert.meta', { turns: meta.turns, date: meta.date, time: meta.time })
@@ -103,14 +136,17 @@ export function buildFoot(doc, options, meta) {
 
 /**
  * Put both blocks in place inside the clone and hand them back for measuring.
+ *
+ * @param edit - `{ title, subtitle, footer }` placeholders when the clone is the edit surface, null
+ *   for a capture.
  * @returns {{ head: Element | null, foot: Element | null }}
  */
-export function insertBlocks(clone, options, meta) {
+export function insertBlocks(clone, options, meta, edit = null) {
   const flow =
     (clone.hasAttribute(SCROLL_ATTRIBUTE) ? clone : clone.querySelector(`[${SCROLL_ATTRIBUTE}]`)) ?? clone
   const doc = clone.ownerDocument
-  const head = buildHead(doc, options, meta)
-  const foot = buildFoot(doc, options, meta)
+  const head = buildHead(doc, options, meta, edit)
+  const foot = buildFoot(doc, options, meta, edit)
   if (head !== null) flow.insertBefore(head, flow.firstChild)
   if (foot !== null) flow.appendChild(foot)
   return { head, foot }

@@ -109,6 +109,12 @@ export const PROCESS_ATTRIBUTE = 'data-turn-process'
 export const STEP_PROCESS_ATTRIBUTE = 'data-step-process'
 export const ATTACHMENTS_ATTRIBUTE = 'data-message-attachments'
 
+/**
+ * The paging control's wrapper. The button inside it stays mounted after the last page, so the
+ * wrapper is a piece of chrome the reader can keep or drop like any other.
+ */
+export const HISTORY_ATTRIBUTE = 'data-chat-history'
+
 /** Theme tokens consulted for the page background, in order. */
 export const BACKGROUND_TOKENS = ['--dsw-alias-bg-base', '--dsw-alias-bg-layer-1']
 
@@ -119,6 +125,14 @@ export const HOLDER_ATTRIBUTE = 'data-dsh-screenshot-holder'
 /** Marks the blocks the settings can add above and below the transcript. */
 export const HEAD_ATTRIBUTE = 'data-dsh-screenshot-head'
 export const FOOT_ATTRIBUTE = 'data-dsh-screenshot-foot'
+
+/**
+ * The edit surface: the overlay that stands in the conversation's place, and the tag that makes any
+ * piece of the staged copy clickable. Both are ours, so they are attributes rather than classes.
+ */
+export const EDITOR_ATTRIBUTE = 'data-dsh-screenshot-editor'
+export const PIECE_ATTRIBUTE = 'data-dsh-screenshot-piece'
+export const FIELD_ATTRIBUTE = 'data-dsh-screenshot-field'
 
 /** Host markers the crop and the turn band are read from. */
 export const SCROLL_ATTRIBUTE = 'data-conversation-scroll'
