@@ -639,6 +639,7 @@ export const STYLES = String.raw`
 }
 .cs-ed-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -648,6 +649,9 @@ export const STYLES = String.raw`
   flex-direction: column;
   gap: 5px;
   min-width: 0;
+}
+.cs-ed-field-row .cs-ed-input {
+  flex: none;
 }
 .cs-ed-prop {
   flex: none;
@@ -660,7 +664,7 @@ export const STYLES = String.raw`
   white-space: nowrap;
 }
 .cs-ed-input {
-  flex: 1;
+  flex: 1 1 96px;
   min-width: 0;
   box-sizing: border-box;
   padding: 4px 6px;

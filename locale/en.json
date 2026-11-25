@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Chat Screenshot",
-    "description": "Adds a camera to the composer toolbar and to each reply's action row, copying the whole conversation or that one turn to the clipboard as a PNG, with a settings page for the chrome it hides, the blocks it adds and the layout."
+    "description": "Turns a conversation, a turn, or a chosen set of turns into one PNG on the clipboard. Its editor opens over the conversation itself: hide any element, add text, images and spacing above or below, reuse saved components, and see the picture while shaping it."
   }
 }

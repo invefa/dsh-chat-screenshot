@@ -1,11 +1,19 @@
 {
   "name": "dsh-chat-screenshot",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
-  "description": "Screenshot a chat, or one turn of it, from the DSH Web UI to the clipboard as a PNG",
+  "description": "Shape a DeepSeek Harness conversation into one PNG and copy it to the clipboard",
   "license": "GPL-3.0-only",
   "author": "invefa",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/invefa/dsh-chat-screenshot.git"
+  },
+  "homepage": "https://github.com/invefa/dsh-chat-screenshot#readme",
+  "bugs": {
+    "url": "https://github.com/invefa/dsh-chat-screenshot/issues"
+  },
   "main": "index.js",
   "exports": {
     ".": "./index.js",
