@@ -189,15 +189,22 @@ export const STYLES = String.raw`
 .cs-ed-wrap {
   position: fixed;
   inset: 0;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  /* A frameless window can hand the page a viewport that starts under its own title bar;
+     the inset keeps the bar and the buttons clear of it. */
+  padding: max(10px, env(safe-area-inset-top)) 0 0;
   background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);
 }
 .cs-ed-bar {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   gap: 16px;
+  row-gap: 10px;
   align-items: flex-start;
   justify-content: space-between;
   padding: 14px 20px;
@@ -206,6 +213,7 @@ export const STYLES = String.raw`
 }
 .cs-ed-lead {
   display: flex;
+  flex: 1 1 320px;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
@@ -215,7 +223,7 @@ export const STYLES = String.raw`
   font-weight: 600;
 }
 .cs-ed-hint {
-  max-width: 70ch;
+  max-width: min(70ch, 100%);
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
   line-height: 1.6;
@@ -225,6 +233,7 @@ export const STYLES = String.raw`
   flex: none;
   gap: 8px;
   align-items: center;
+  margin-left: auto;
 }
 .cs-ed-host {
   flex: 1;

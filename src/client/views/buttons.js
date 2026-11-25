@@ -3,7 +3,8 @@
  * `CaptureButton` draws it, and the two exported components only decide what a click captures.
  */
 
-import { h, useState, useCallback } from '../shell/runtime.js'
+import { SCROLL_ATTRIBUTE } from '../shell/const.js'
+import { h, useState, useCallback, useEffect } from '../shell/runtime.js'
 import { useCaptureStatus, deliver } from '../shell/status.js'
 import { captureConversation, conversationRoot } from '../dom/capture.js'
 import { captureTurn, captureTurns, turnList } from '../dom/turn.js'
@@ -142,6 +143,22 @@ export function ScreenshotButton({ sessionId }) {
     }
     setPickerOpen(true)
   }
+
+  // A menu belongs to the control that opened it. The list is placed once, against the viewport, so
+  // content scrolling underneath it would leave it floating over unrelated text; the host closes its
+  // own menus on a scroll for the same reason. Both signals are read from the conversation, not from
+  // the whole document, so scrolling the menu's own list still works.
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const close = () => setMenuOpen(false)
+    const scroller = document.querySelector(`[${SCROLL_ATTRIBUTE}]`)
+    if (scroller !== null) scroller.addEventListener('scroll', close, { capture: true, passive: true })
+    window.addEventListener('resize', close, { passive: true })
+    return () => {
+      if (scroller !== null) scroller.removeEventListener('scroll', close, { capture: true })
+      window.removeEventListener('resize', close)
+    }
+  }, [menuOpen])
 
   const toggle = (index, on) => {
     setPicked((current) => {

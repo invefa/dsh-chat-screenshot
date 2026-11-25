@@ -24,7 +24,7 @@ import {
 import { readOptions } from '../shell/options.js'
 import { dropChrome, dropSkipped, sanitizeClone } from './clone.js'
 import { insertBlocks, insertMeta } from './inserts.js'
-import { planCrop } from './band.js'
+import { pieceBottom, planCrop } from './band.js'
 import { renderStage } from '../render/index.js'
 import { captureScale, nextFrame, waitForImages } from '../render/scale.js'
 /** The colour the picture starts from: the transcript's own, else a theme token, else the page. */
@@ -196,6 +196,9 @@ export async function captureConversation(anchor, pruneClone) {
     if (blocks.head !== null) {
       firstTurnTop = Math.min(firstTurnTop, blocks.head.getBoundingClientRect().top - cloneBox.top)
     }
+    // The composer sits outside the scroll port, so the flow walk never reaches it. When the reader
+    // keeps it, the picture grows down to include it; when they hide it, the piece is gone and this is 0.
+    contentBottom = Math.max(contentBottom, pieceBottom(clone, cloneBox.top, 'composer'))
     const crop = planCrop({ measured, scrollerTop, firstTurnTop, lastTurnBottom, contentBottom })
     const clipTop = crop.top
     const clipHeight = crop.height

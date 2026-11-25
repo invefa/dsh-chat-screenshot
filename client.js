@@ -837,15 +837,22 @@ window.__ModuleLoader__.load({
     .cs-ed-wrap {
       position: fixed;
       inset: 0;
+      box-sizing: border-box;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
+      /* A frameless window can hand the page a viewport that starts under its own title bar;
+         the inset keeps the bar and the buttons clear of it. */
+      padding: max(10px, env(safe-area-inset-top)) 0 0;
       background: var(--dsw-alias-bg-base);
       color: var(--dsw-alias-label-primary);
     }
     .cs-ed-bar {
       display: flex;
       flex: none;
+      flex-wrap: wrap;
       gap: 16px;
+      row-gap: 10px;
       align-items: flex-start;
       justify-content: space-between;
       padding: 14px 20px;
@@ -854,6 +861,7 @@ window.__ModuleLoader__.load({
     }
     .cs-ed-lead {
       display: flex;
+      flex: 1 1 320px;
       flex-direction: column;
       gap: 4px;
       min-width: 0;
@@ -863,7 +871,7 @@ window.__ModuleLoader__.load({
       font-weight: 600;
     }
     .cs-ed-hint {
-      max-width: 70ch;
+      max-width: min(70ch, 100%);
       color: var(--dsw-alias-label-secondary);
       font-size: 12px;
       line-height: 1.6;
@@ -873,6 +881,7 @@ window.__ModuleLoader__.load({
       flex: none;
       gap: 8px;
       align-items: center;
+      margin-left: auto;
     }
     .cs-ed-host {
       flex: 1;
@@ -2071,6 +2080,26 @@ window.__ModuleLoader__.load({
      * transcript's flow; none of them may take content with it.
      */
 
+
+    /**
+     * The bottom edge of a chrome piece that survived pruning, in the clone's own coordinates.
+     *
+     * A piece that sits outside the scroll port — the composer does — is never reached by the flow walk
+     * below, so keeping it in the picture would otherwise mean keeping it and never seeing it. Reading it
+     * here makes "leave the composer in" mean exactly that: the band grows down to it.
+     *
+     * @param clone - the staged copy.
+     * @param cloneTop - the copy's top edge, as `getBoundingClientRect` reported it.
+     * @param id - the piece id the chrome table uses.
+     * @returns the bottom in clone coordinates, or 0 when the piece is gone or has no height.
+     */
+    function pieceBottom(clone, cloneTop, id) {
+      const piece = clone.querySelector(`[${PIECE_ATTRIBUTE}="${id}"]`)
+      if (piece === null) return 0
+      const box = piece.getBoundingClientRect()
+      return box.height > 0 ? box.bottom - cloneTop : 0
+    }
+
     /**
      * @param measured - the staged clone's full height.
      * @param scrollerTop - the scroll port's top inside the application surface.
@@ -2775,6 +2804,9 @@ window.__ModuleLoader__.load({
         if (blocks.head !== null) {
           firstTurnTop = Math.min(firstTurnTop, blocks.head.getBoundingClientRect().top - cloneBox.top)
         }
+        // The composer sits outside the scroll port, so the flow walk never reaches it. When the reader
+        // keeps it, the picture grows down to include it; when they hide it, the piece is gone and this is 0.
+        contentBottom = Math.max(contentBottom, pieceBottom(clone, cloneBox.top, 'composer'))
         const crop = planCrop({ measured, scrollerTop, firstTurnTop, lastTurnBottom, contentBottom })
         const clipTop = crop.top
         const clipHeight = crop.height
@@ -2836,6 +2868,43 @@ window.__ModuleLoader__.load({
      */
 
 
+    /**
+     * The band the capture would cut, measured in the copy.
+     *
+     * The overlay must not show the whole application surface: the copy carries the conversation header,
+     * the tab row and the sidebar, and none of them are in the picture. Cutting the frame to the same
+     * band `planCrop` cuts means the reader is looking at the photograph, not at the window — and a
+     * control that cannot appear in the picture cannot be pointed at here either.
+     *
+     * @returns {{top: number, bottom: number}} edges in the copy's coordinate space.
+     */
+    function measureBand(doc, clone, scrollerClone, head) {
+      const box = clone.getBoundingClientRect()
+      let top = Number.POSITIVE_INFINITY
+      let bottom = 0
+      for (const turn of clone.querySelectorAll(`[${TURN_ATTRIBUTE}]`)) {
+        const rect = turn.getBoundingClientRect()
+        if (rect.height <= 0) continue
+        top = Math.min(top, rect.top - box.top)
+        bottom = Math.max(bottom, rect.bottom - box.top)
+      }
+      // A header the reader added sits above the first turn, so the picture starts at whichever is higher.
+      if (head !== null) top = Math.min(top, head.getBoundingClientRect().top - box.top)
+      // Cards, attachment strips and file lists are laid out after the last turn as their own flow items.
+      const flow = scrollerClone ?? clone
+      const view = doc.defaultView
+      for (const child of flow.children) {
+        const style = view.getComputedStyle(child)
+        if (style.display === 'none' || style.visibility !== 'visible' || style.position === 'fixed') continue
+        const rect = child.getBoundingClientRect()
+        if (rect.height > 0) bottom = Math.max(bottom, rect.bottom - box.top)
+      }
+      bottom = Math.max(bottom, pieceBottom(clone, box.top, 'composer'))
+      if (!Number.isFinite(top)) top = 0
+      if (bottom <= 0) bottom = box.height
+      return { top: Math.max(0, Math.floor(top)), bottom: Math.ceil(Math.min(bottom, box.height)) }
+    }
+
     /** Overlay, frame and clone in one tree; the caller only has to mount `element`. */
     function shell(doc, background, fontFamily, color) {
       const element = doc.createElement('div')
@@ -2875,7 +2944,8 @@ window.__ModuleLoader__.load({
      * @param anchor - any element inside the conversation subtree.
      * @param options - the reader's current switches.
      * @param labels - the placeholders the inserted fields show when empty.
-     * @returns {{ element, clone, head, foot, destroy }} the mounted overlay and its parts.
+     * @returns {{ element, clone, head, foot, frame, destroy }} the overlay and its parts; `frame()` crops the
+     *   view to the picture and must be called once `element` is in the document.
      */
     function buildStage(anchor, options, labels) {
       const scroller = anchor.closest(`[${SCROLL_ATTRIBUTE}]`)
@@ -2933,15 +3003,27 @@ window.__ModuleLoader__.load({
       parts.frame.style.setProperty('width', `${clipWidth}px`)
       parts.frame.style.setProperty('--cs-edge', `${options.edge}px`)
 
-      if (DEBUG_MEASURE && typeof console !== 'undefined') {
-        console.info('[dsh-screenshot] editor', {
-          width,
-          clipWidth,
-          clipLeft,
-          turns,
-          head: blocks.head !== null,
-          foot: blocks.foot !== null,
-        })
+      // Frame the picture: shift the copy up to the band's top and let the frame be exactly as tall as
+      // the band, clipping everything above and below it. This has to run after the caller has mounted
+      // `element`, because a detached tree has no boxes to measure — every rect reads zero and the frame
+      // collapses. The caller therefore mounts first and calls `frame()` right after.
+      const frame = () => {
+        const band = measureBand(doc, clone, scrollerClone, blocks.head)
+        parts.stage.style.setProperty('margin-top', `${-band.top}px`)
+        parts.frame.style.setProperty('height', `${Math.max(1, band.bottom - band.top)}px`)
+        if (DEBUG_MEASURE && typeof console !== 'undefined') {
+          console.info('[dsh-screenshot] editor', {
+            width,
+            clipWidth,
+            clipLeft,
+            bandTop: band.top,
+            bandBottom: band.bottom,
+            turns,
+            head: blocks.head !== null,
+            foot: blocks.foot !== null,
+          })
+        }
+        return band
       }
 
       const destroy = () => {
@@ -2949,7 +3031,7 @@ window.__ModuleLoader__.load({
         parts.element.remove()
       }
 
-      return { element: parts.element, scroll: parts.scroll, clone, head: blocks.head, foot: blocks.foot, destroy }
+      return { element: parts.element, scroll: parts.scroll, clone, head: blocks.head, foot: blocks.foot, frame, destroy }
     }
 
     // ===== shell/status.js ===========================================
@@ -3265,7 +3347,12 @@ window.__ModuleLoader__.load({
           footer: String(labels.footer),
         })
         stageRef.current = stage
-        if (hostRef.current !== null) hostRef.current.replaceChildren(stage.element)
+        if (hostRef.current !== null) {
+          hostRef.current.replaceChildren(stage.element)
+          // Only now does the copy have boxes: a detached tree measures as zero and the frame would
+          // collapse to nothing, so the band is cut after mounting.
+          stage.frame()
+        }
         return () => {
           stage.destroy()
           stageRef.current = null
@@ -3353,6 +3440,21 @@ window.__ModuleLoader__.load({
         document.addEventListener('keydown', onKey)
         return () => document.removeEventListener('keydown', onKey)
       }, [onClose])
+
+      // The copy is built from the conversation's width at that moment. A resize or a zoom leaves it
+      // wider than the surface, which cuts the right edge of the picture, so rebuild it at the new size.
+      useEffect(() => {
+        let timer = null
+        const onResize = () => {
+          window.clearTimeout(timer)
+          timer = window.setTimeout(() => setRevision((value) => value + 1), 220)
+        }
+        window.addEventListener('resize', onResize)
+        return () => {
+          window.clearTimeout(timer)
+          window.removeEventListener('resize', onResize)
+        }
+      }, [])
 
       if (native === undefined) return null
       const { Button, Menu } = native
@@ -3604,6 +3706,22 @@ window.__ModuleLoader__.load({
         }
         setPickerOpen(true)
       }
+
+      // A menu belongs to the control that opened it. The list is placed once, against the viewport, so
+      // content scrolling underneath it would leave it floating over unrelated text; the host closes its
+      // own menus on a scroll for the same reason. Both signals are read from the conversation, not from
+      // the whole document, so scrolling the menu's own list still works.
+      useEffect(() => {
+        if (!menuOpen) return undefined
+        const close = () => setMenuOpen(false)
+        const scroller = document.querySelector(`[${SCROLL_ATTRIBUTE}]`)
+        if (scroller !== null) scroller.addEventListener('scroll', close, { capture: true, passive: true })
+        window.addEventListener('resize', close, { passive: true })
+        return () => {
+          if (scroller !== null) scroller.removeEventListener('scroll', close, { capture: true })
+          window.removeEventListener('resize', close)
+        }
+      }, [menuOpen])
 
       const toggle = (index, on) => {
         setPicked((current) => {

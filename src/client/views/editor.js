@@ -88,7 +88,12 @@ export function CaptureEditor({ onClose }) {
       footer: String(labels.footer),
     })
     stageRef.current = stage
-    if (hostRef.current !== null) hostRef.current.replaceChildren(stage.element)
+    if (hostRef.current !== null) {
+      hostRef.current.replaceChildren(stage.element)
+      // Only now does the copy have boxes: a detached tree measures as zero and the frame would
+      // collapse to nothing, so the band is cut after mounting.
+      stage.frame()
+    }
     return () => {
       stage.destroy()
       stageRef.current = null
@@ -176,6 +181,21 @@ export function CaptureEditor({ onClose }) {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  // The copy is built from the conversation's width at that moment. A resize or a zoom leaves it
+  // wider than the surface, which cuts the right edge of the picture, so rebuild it at the new size.
+  useEffect(() => {
+    let timer = null
+    const onResize = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => setRevision((value) => value + 1), 220)
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [])
 
   if (native === undefined) return null
   const { Button, Menu } = native

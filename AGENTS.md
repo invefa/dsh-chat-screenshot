@@ -91,6 +91,11 @@ Documentation is English with a `.zh-CN.md` edition.
   system hands every package; a hand-rolled menu would lose the theme, the focus trap and the keyboard
   handling the surrounding UI already has. `native` may be undefined in a build that ships no seed, so
   every use falls back to render nothing rather than to throw.
+- The editor shows the band a capture would keep, not the page: the copy is measured after it is
+  mounted (`stage.frame()`), because a detached subtree has no boxes and would collapse the frame, and
+  it is rebuilt when the window resizes or zooms, because the width of the copy is the conversation's
+  width at the moment it was built. A menu opened from the composer closes on the conversation's own
+  scroll, so it cannot drift away from the button that opened it.
 - A turn is keyed by its opening message, not by the reply. Turns are read from
   `[data-chat-flow-kind="user"]`, a turn ends where the next one opens, and a reply that is still
   streaming has no `[data-turn-tail]` yet — it is still a turn, and it is capturable. Selecting several

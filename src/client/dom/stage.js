@@ -21,9 +21,47 @@ import {
   STAGE_ATTRIBUTE,
   TURN_ATTRIBUTE,
 } from '../shell/const.js'
+import { pieceBottom } from './band.js'
 import { dropSkipped, paintChrome, sanitizeClone } from './clone.js'
 import { RAW_META, insertBlocks } from './inserts.js'
 import { resolveBackground } from './capture.js'
+
+/**
+ * The band the capture would cut, measured in the copy.
+ *
+ * The overlay must not show the whole application surface: the copy carries the conversation header,
+ * the tab row and the sidebar, and none of them are in the picture. Cutting the frame to the same
+ * band `planCrop` cuts means the reader is looking at the photograph, not at the window — and a
+ * control that cannot appear in the picture cannot be pointed at here either.
+ *
+ * @returns {{top: number, bottom: number}} edges in the copy's coordinate space.
+ */
+function measureBand(doc, clone, scrollerClone, head) {
+  const box = clone.getBoundingClientRect()
+  let top = Number.POSITIVE_INFINITY
+  let bottom = 0
+  for (const turn of clone.querySelectorAll(`[${TURN_ATTRIBUTE}]`)) {
+    const rect = turn.getBoundingClientRect()
+    if (rect.height <= 0) continue
+    top = Math.min(top, rect.top - box.top)
+    bottom = Math.max(bottom, rect.bottom - box.top)
+  }
+  // A header the reader added sits above the first turn, so the picture starts at whichever is higher.
+  if (head !== null) top = Math.min(top, head.getBoundingClientRect().top - box.top)
+  // Cards, attachment strips and file lists are laid out after the last turn as their own flow items.
+  const flow = scrollerClone ?? clone
+  const view = doc.defaultView
+  for (const child of flow.children) {
+    const style = view.getComputedStyle(child)
+    if (style.display === 'none' || style.visibility !== 'visible' || style.position === 'fixed') continue
+    const rect = child.getBoundingClientRect()
+    if (rect.height > 0) bottom = Math.max(bottom, rect.bottom - box.top)
+  }
+  bottom = Math.max(bottom, pieceBottom(clone, box.top, 'composer'))
+  if (!Number.isFinite(top)) top = 0
+  if (bottom <= 0) bottom = box.height
+  return { top: Math.max(0, Math.floor(top)), bottom: Math.ceil(Math.min(bottom, box.height)) }
+}
 
 /** Overlay, frame and clone in one tree; the caller only has to mount `element`. */
 function shell(doc, background, fontFamily, color) {
@@ -64,7 +102,8 @@ function shell(doc, background, fontFamily, color) {
  * @param anchor - any element inside the conversation subtree.
  * @param options - the reader's current switches.
  * @param labels - the placeholders the inserted fields show when empty.
- * @returns {{ element, clone, head, foot, destroy }} the mounted overlay and its parts.
+ * @returns {{ element, clone, head, foot, frame, destroy }} the overlay and its parts; `frame()` crops the
+ *   view to the picture and must be called once `element` is in the document.
  */
 export function buildStage(anchor, options, labels) {
   const scroller = anchor.closest(`[${SCROLL_ATTRIBUTE}]`)
@@ -122,15 +161,27 @@ export function buildStage(anchor, options, labels) {
   parts.frame.style.setProperty('width', `${clipWidth}px`)
   parts.frame.style.setProperty('--cs-edge', `${options.edge}px`)
 
-  if (DEBUG_MEASURE && typeof console !== 'undefined') {
-    console.info('[dsh-screenshot] editor', {
-      width,
-      clipWidth,
-      clipLeft,
-      turns,
-      head: blocks.head !== null,
-      foot: blocks.foot !== null,
-    })
+  // Frame the picture: shift the copy up to the band's top and let the frame be exactly as tall as
+  // the band, clipping everything above and below it. This has to run after the caller has mounted
+  // `element`, because a detached tree has no boxes to measure — every rect reads zero and the frame
+  // collapses. The caller therefore mounts first and calls `frame()` right after.
+  const frame = () => {
+    const band = measureBand(doc, clone, scrollerClone, blocks.head)
+    parts.stage.style.setProperty('margin-top', `${-band.top}px`)
+    parts.frame.style.setProperty('height', `${Math.max(1, band.bottom - band.top)}px`)
+    if (DEBUG_MEASURE && typeof console !== 'undefined') {
+      console.info('[dsh-screenshot] editor', {
+        width,
+        clipWidth,
+        clipLeft,
+        bandTop: band.top,
+        bandBottom: band.bottom,
+        turns,
+        head: blocks.head !== null,
+        foot: blocks.foot !== null,
+      })
+    }
+    return band
   }
 
   const destroy = () => {
@@ -138,5 +189,5 @@ export function buildStage(anchor, options, labels) {
     parts.element.remove()
   }
 
-  return { element: parts.element, scroll: parts.scroll, clone, head: blocks.head, foot: blocks.foot, destroy }
+  return { element: parts.element, scroll: parts.scroll, clone, head: blocks.head, foot: blocks.foot, frame, destroy }
 }

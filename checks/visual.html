@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>editor visual</title>
+    <style>
+      :root {
+        --dsw-alias-bg-base: #1a1a1a;
+        --dsw-alias-bg-layer-1: #232323;
+        --dsw-alias-bg-layer-2: #2a2a2a;
+        --dsw-alias-border-l1: #333;
+        --dsw-alias-border-l2: #3a3a3a;
+        --dsw-alias-border-l4: #555;
+        --dsw-alias-label-primary: #e8e8e8;
+        --dsw-alias-label-secondary: #9a9a9a;
+        --dsw-alias-brand-primary: #4d8dff;
+        --dsw-font-markdown-code: ui-monospace, monospace;
+        background: var(--dsw-alias-bg-base);
+        color: var(--dsw-alias-label-primary);
+        font-family: system-ui, 'Microsoft YaHei', sans-serif;
+        font-size: 14px;
+      }
+      body { margin: 0; }
+      /* Host shell: a sidebar outside the transcript, a header and a tab row above it. */
+      .app { display: flex; height: 100vh; }
+      .side { width: 290px; flex: none; background: #161616; border-right: 1px solid var(--dsw-alias-border-l1); padding: 12px; }
+      .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      .head { padding: 10px 24px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+      .tabs { display: flex; gap: 18px; padding: 6px 24px; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); }
+      .scroller { flex: 1; min-height: 0; overflow-y: auto; padding: 0 32px; }
+      .turn { padding: 12px 0; }
+      .bubble { background: var(--dsw-alias-bg-layer-2); border-radius: 10px; padding: 10px 14px; }
+      .composer { flex: none; margin: 8px 24px 16px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; padding: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="app">
+        <div class="side">侧栏 · 不属于图片</div>
+        <div class="main">
+          <div class="head">会话标题 · 标准模式</div>
+          <div class="tabs"><span>对话</span><span>轨迹</span><span>上下文</span></div>
+          <div class="scroller" data-conversation-scroll>
+            <div class="turn" data-chat-turn data-chat-flow-kind="user">
+              <div class="bubble">第一轮：用户消息，前面还有一块会话头需要被裁掉。</div>
+            </div>
+            <div class="turn" data-chat-turn data-turn-tail><div class="bubble">第一轮回答。</div></div>
+            <div class="turn" data-chat-turn data-chat-flow-kind="user"><div class="bubble">第二轮：用户消息。</div></div>
+            <div class="turn" data-chat-turn data-turn-tail><div class="bubble">第二轮回答，稍微长一点，用来撑高这一轮。</div></div>
+          </div>
+          <div class="composer">输入区 · 在图片范围之外</div>
+        </div>
+      </div>
+    </div>
+    <script type="module">
+      import { installStyle } from '/src/client/shell/style.js?v=4'
+      import { buildStage } from '/src/client/dom/stage.js?v=4'
+      import { OPTION_DEFAULTS } from '/src/client/shell/options.js?v=4'
+
+      installStyle()
+
+      const anchor = document.querySelector('[data-conversation-scroll]')
+      const label = (text) => ({ title: text, subtitle: text, footer: text })
+      const stage = buildStage(anchor, { ...OPTION_DEFAULTS, title: '标题', subtitle: '副标题' }, label('添加'))
+
+      // The editor frame exactly as views/editor.js lays it out.
+      const root = document.createElement('div')
+      root.className = 'cs-ed-root'
+      root.dataset.dshScreenshotEditor = 'true'
+      root.innerHTML = `
+        <div class="cs-ed-wrap">
+          <div class="cs-ed-bar">
+            <div class="cs-ed-lead">
+              <div class="cs-ed-title">对话截图 · 编辑</div>
+              <div class="cs-ed-hint">点部件隐藏它，再点放回。右键可以开关全部部件、改页头页脚。</div>
+            </div>
+            <div class="cs-ed-actions">
+              <button class="cs-set-reset" type="button">恢复默认</button>
+              <button class="cs-set-open" type="button">完成</button>
+            </div>
+          </div>
+          <div class="cs-ed-host"></div>
+        </div>`
+      document.body.append(root)
+      root.querySelector('.cs-ed-host').append(stage.element)
+      stage.frame()
+      document.title = 'READY'
+    </script>
+  </body>
+</html>
