@@ -54,17 +54,30 @@ A successful copy flashes a check over the icon. When the clipboard is unavailab
 
 ## Settings
 
-Settings > ChatScreenshot holds three groups. Every change applies to the next capture; nothing needs a reload.
+Settings > ChatScreenshot opens on a miniature of the capture: the same markers, the same chrome, the
+same inserted blocks, drawn at panel size.
 
-| Group | Rows |
-| --- | --- |
-| Hidden chrome | clock and usage row, thinking and tool rows, attachments, navigator rail, drag handles, back-to-bottom button |
-| Added blocks | title, subtitle, footer, the turn and date line, the rule that separates a block from the transcript |
-| Layout | alignment, outer margin, scale |
+- **Click a piece to drop it; click it again to bring it back.** A hidden piece leaves a dashed gap
+  with its name, so the setting is never invisible. Six pieces answer this way: the turn navigator, the
+  attachment strip, the thinking and tool rows, the clock and action row, the back-to-bottom button and
+  the drag handles.
+- **Right-click the preview for the full list.** Every toggle appears as a checkable item, marked when
+  the piece is hidden, and the menu also holds "Add a header" and "Add a footer" — or "Edit" once one
+  exists.
+- **Click the header or the footer to edit it** in a dialog: two lines of prose for the header, one line
+  and the metadata switch for the footer, with the divider switch and a save button. Both accept
+  `{turns}`, `{date}` and `{time}`.
+- Three rows under the preview set alignment, outer margin and resolution. Every change applies to the
+  next capture; nothing needs a reload.
 
-The title, subtitle and footer are plain text and accept `{turns}`, `{date}` and `{time}`. A header is drawn above the first turn and a footer below the last one, inside the cropped area, so they survive the same render path as the conversation.
+A header is drawn above the first turn and a footer below the last one, inside the cropped area, so they
+survive the same render path as the conversation.
 
 Choices live in this browser's `localStorage` under `chat-screenshot.options`; the plugin registers no host configuration and stores nothing on the server. A stored value that no longer matches an offered one falls back to the nearest choice, and "Restore defaults" brings back the picture the plugin took before the settings existed.
+
+The menu, the dialog, the switches and the input fields are the host's own components, read from the
+`@deepseek-ai/dsh-client-ui-primitives` seed word, so the panel keeps the theme, the focus handling and
+the keyboard behaviour of the rest of Settings.
 
 ## Limits
 

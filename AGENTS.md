@@ -3,8 +3,8 @@
 ## What this is
 
 A DeepSeek Harness client plugin that renders a conversation to a PNG and writes it to the clipboard.
-It owns no host service and stores nothing: the page's own DOM is the input, and the clipboard or a
-download is the output.
+It owns no host service and stores nothing on the server: the page's own DOM is the input, the
+clipboard or a download is the output, and the only persisted state is one `localStorage` key.
 
 | Piece | Path |
 | --- | --- |
@@ -68,6 +68,11 @@ Documentation is English with a `.zh-CN.md` edition.
   must never need a restart. The settings section is a single `settings.section` registration: the
   host draws the navigation label and hands the component `close` alone, so the section renders rows,
   not a heading.
+- The settings panel is a preview, not a form. It draws the same markers a capture reads at panel
+  size, so a switch is a piece you click in the mock transcript and an added block is edited where it
+  will appear; a list of switches beside the mock would be a second description of the same state and
+  the two would drift. Anything the preview shows must come from `readOptions()` — a control that
+  updates local state instead of the stored options shows a picture no capture will ever make.
 - The right-click menu and the turn chooser are the host's own components. `shell/runtime.js` exposes
   them as `native`, read from the `@deepseek-ai/dsh-client-ui-primitives` seed word that the module
   system hands every package; a hand-rolled menu would lose the theme, the focus trap and the keyboard

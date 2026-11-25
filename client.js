@@ -436,36 +436,42 @@ window.__ModuleLoader__.load({
         'menu.cancel': '取消',
         'menu.turn': '第 {index} 轮',
         'insert.meta': '{turns} 轮对话 · {date} {time}',
+        'insert.metaSample': '2 轮对话 · 2026-01-01 09:05',
         'settings.title': '对话截图',
-        'settings.intro': '控制截图里保留哪些控件、额外加上哪些文字，以及图片的排布。设置即刻生效，立即保存在本机。',
-        'settings.group.hide': '隐藏的控件',
-        'settings.group.add': '加入的内容',
-        'settings.group.layout': '排布',
-        'settings.hide.clock': '时钟与操作行',
-        'settings.hide.clockHint': '每轮末尾的时间、用量与复制按钮',
-        'settings.hide.process': '思考与工具过程',
-        'settings.hide.processHint': '模型推理与工具调用的折叠块',
-        'settings.hide.attachments': '用户附件条',
-        'settings.hide.attachmentsHint': '用户消息里的文件名与缩略图',
-        'settings.hide.nav': '轮次导航',
-        'settings.hide.navHint': '右边缘的轮次刻度条',
-        'settings.hide.handles': '拖拽手柄与占位',
-        'settings.hide.handlesHint': '调整宽度的手柄与分页留白',
-        'settings.hide.toBottom': '回到底部按钮',
-        'settings.hide.toBottomHint': '浮在右下角的那个按钮',
-        'settings.add.title': '标题',
-        'settings.add.titleHint': '显示在截图顶部，可用 {turns}、{date}、{time}',
+        'settings.intro': '下面这张就是截图的样子。点一下某个部件就隐藏它，再点一下放回来；右键打开完整清单，也能在那里加页头和页脚。设置即刻生效，保存在本机。',
+        'settings.previewHint': '预览按当前设置绘制。隐藏的部件留一条虚线占位，点一下即可恢复。',
+        'settings.piece.nav': '轮次导航',
+        'settings.piece.attachments': '用户附件条',
+        'settings.piece.process': '思考与工具过程',
+        'settings.piece.clock': '时钟与操作行',
+        'settings.piece.toBottom': '回到底部按钮',
+        'settings.piece.handles': '拖拽手柄与占位',
+        'settings.piece.head': '页头',
+        'settings.piece.foot': '页脚',
+        'settings.piece.meta': '页脚信息行',
+        'settings.piece.divider': '分隔线',
+        'settings.menu.head': '添加页头',
+        'settings.menu.headEdit': '编辑页头',
+        'settings.menu.foot': '添加页脚',
+        'settings.menu.footEdit': '编辑页脚',
+        'settings.sample.nav': '导航',
+        'settings.sample.user': '请把这份记录整理成一份说明',
+        'settings.sample.files': '附件：方案.md',
+        'settings.sample.process': '思考中 · 2 个工具步骤',
+        'settings.sample.answer': '已按三段整理，末尾补了结论。',
+        'settings.sample.clock': '09:05 · 1.2k tokens',
+        'settings.sample.toBottom': '回到底部',
+        'settings.sample.handles': '拖拽手柄',
+        'settings.edit.title': '标题',
+        'settings.edit.subtitle': '副标题',
+        'settings.edit.footer': '页脚文字',
+        'settings.edit.tokens': '可用 {turns}、{date}、{time} 三个占位符。',
+        'settings.edit.untitled': '（未填写标题）',
+        'settings.edit.save': '保存',
+        'settings.edit.cancel': '取消',
         'settings.add.titlePlaceholder': '例如：会话整理',
-        'settings.add.subtitle': '副标题',
-        'settings.add.subtitleHint': '标题下方的一行说明',
-        'settings.add.footer': '页脚',
-        'settings.add.footerHint': '显示在截图底部',
-        'settings.add.meta': '页脚信息行',
-        'settings.add.metaHint': '在页脚加入轮次数与截图时间',
-        'settings.add.divider': '分隔线',
-        'settings.add.dividerHint': '在标题下方与页脚上方画一条细线',
         'settings.layout.align': '文字对齐',
-        'settings.layout.alignHint': '标题与页脚的对齐方式',
+        'settings.layout.alignHint': '页头与页脚的对齐方式',
         'settings.align.left': '左对齐',
         'settings.align.center': '居中',
         'settings.layout.edge': '边距',
@@ -508,37 +514,45 @@ window.__ModuleLoader__.load({
         'menu.cancel': 'Cancel',
         'menu.turn': 'Turn {index}',
         'insert.meta': 'Turns: {turns} · {date} {time}',
+        'insert.metaSample': 'Turns: 2 · 2026-01-01 09:05',
         'settings.title': 'Chat screenshot',
         'settings.intro':
           'Choose which chrome the picture keeps, which text it adds, and how it is laid out. Changes apply to the next capture and are stored on this machine.',
-        'settings.group.hide': 'Hidden chrome',
-        'settings.group.add': 'Added content',
-        'settings.group.layout': 'Layout',
-        'settings.hide.clock': 'Clock and action row',
-        'settings.hide.clockHint': 'Time, usage and copy controls at the end of each turn',
-        'settings.hide.process': 'Thinking and tool steps',
-        'settings.hide.processHint': 'Collapsed reasoning and tool-call blocks',
-        'settings.hide.attachments': 'Attachment strip',
-        'settings.hide.attachmentsHint': 'File names and thumbnails in the user message',
-        'settings.hide.nav': 'Turn navigator',
-        'settings.hide.navHint': 'The tick rail on the right edge',
-        'settings.hide.handles': 'Drag handles and spacers',
-        'settings.hide.handlesHint': 'The width handle and the paging spacer',
-        'settings.hide.toBottom': 'Back-to-bottom button',
-        'settings.hide.toBottomHint': 'The control floating in the lower right',
-        'settings.add.title': 'Title',
-        'settings.add.titleHint': 'Shown above the transcript; supports {turns}, {date} and {time}',
+        'settings.intro':
+          'The picture below is what a capture makes. Click a piece to drop it, click it again to bring it back, and right-click for the full list, where the header and the footer are added. Changes apply to the next capture and are stored on this machine.',
+        'settings.previewHint': 'The preview is drawn from the current settings. A hidden piece leaves a dashed gap; click it to restore.',
+        'settings.piece.nav': 'Turn navigator',
+        'settings.piece.attachments': 'Attachment strip',
+        'settings.piece.process': 'Thinking and tool steps',
+        'settings.piece.clock': 'Clock and action row',
+        'settings.piece.toBottom': 'Back-to-bottom button',
+        'settings.piece.handles': 'Drag handles and spacers',
+        'settings.piece.head': 'Header',
+        'settings.piece.foot': 'Footer',
+        'settings.piece.meta': 'Footer meta line',
+        'settings.piece.divider': 'Divider',
+        'settings.menu.head': 'Add a header',
+        'settings.menu.headEdit': 'Edit the header',
+        'settings.menu.foot': 'Add a footer',
+        'settings.menu.footEdit': 'Edit the footer',
+        'settings.sample.nav': 'Navigator',
+        'settings.sample.user': 'Turn this transcript into a short brief',
+        'settings.sample.files': 'Attachment: plan.md',
+        'settings.sample.process': 'Thinking · 2 tool steps',
+        'settings.sample.answer': 'Three sections now, and a conclusion at the end.',
+        'settings.sample.clock': '09:05 · 1.2k tokens',
+        'settings.sample.toBottom': 'Back to bottom',
+        'settings.sample.handles': 'Drag handle',
+        'settings.edit.title': 'Title',
+        'settings.edit.subtitle': 'Subtitle',
+        'settings.edit.footer': 'Footer text',
+        'settings.edit.tokens': 'Three placeholders are available: {turns}, {date} and {time}.',
+        'settings.edit.untitled': '(no title yet)',
+        'settings.edit.save': 'Save',
+        'settings.edit.cancel': 'Cancel',
         'settings.add.titlePlaceholder': 'e.g. Session notes',
-        'settings.add.subtitle': 'Subtitle',
-        'settings.add.subtitleHint': 'One line under the title',
-        'settings.add.footer': 'Footer',
-        'settings.add.footerHint': 'Shown under the transcript',
-        'settings.add.meta': 'Footer meta line',
-        'settings.add.metaHint': 'Add the turn count and the capture time to the footer',
-        'settings.add.divider': 'Dividers',
-        'settings.add.dividerHint': 'Draw a hairline under the title and above the footer',
         'settings.layout.align': 'Text alignment',
-        'settings.layout.alignHint': 'Alignment of the added title and footer',
+        'settings.layout.alignHint': 'Alignment of the added header and footer',
         'settings.align.left': 'Left',
         'settings.align.center': 'Center',
         'settings.layout.edge': 'Margin',
@@ -797,6 +811,148 @@ window.__ModuleLoader__.load({
       max-height: 46vh;
       padding-right: 4px;
       overflow-y: auto;
+    }
+    .cs-set-picker {
+      flex: none;
+      min-width: 96px;
+    }
+    .cs-prev-wrap {
+      margin: 14px 0 10px;
+    }
+    .cs-prev {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 420px;
+      overflow: auto;
+      border: 1px solid var(--dsw-alias-border-l2);
+      border-radius: 12px;
+      background: var(--dsw-alias-bg-layer-1);
+      color: var(--dsw-alias-label-primary);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .cs-prev.align-center {
+      text-align: center;
+    }
+    .cs-prev-piece,
+    .cs-prev-insert {
+      position: relative;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .cs-prev-piece:hover,
+    .cs-prev-insert:hover {
+      outline: 1px dashed var(--dsw-alias-border-l4);
+      outline-offset: 2px;
+    }
+    .cs-prev-piece:focus-visible,
+    .cs-prev-insert:focus-visible {
+      outline: 2px solid var(--dsw-alias-brand-primary);
+      outline-offset: 2px;
+    }
+    .cs-prev-piece.is-off,
+    .cs-prev-insert.is-empty {
+      outline: 1px dashed var(--dsw-alias-border-l3);
+      outline-offset: 2px;
+      opacity: 0.75;
+    }
+    .cs-prev-off {
+      display: inline-block;
+      padding: 2px 8px;
+      color: var(--dsw-alias-label-secondary);
+      font-size: 12px;
+    }
+    .cs-prev-rail {
+      align-self: flex-end;
+      color: var(--dsw-alias-label-tertiary);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+    .cs-prev-turn {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .cs-prev-bubble {
+      align-self: flex-end;
+      max-width: 82%;
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: var(--dsw-alias-bg-layer-2);
+    }
+    .cs-prev-files,
+    .cs-prev-think,
+    .cs-prev-clock {
+      color: var(--dsw-alias-label-secondary);
+      font-size: 12px;
+    }
+    .cs-prev-think {
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: var(--dsw-alias-bg-layer-2);
+    }
+    .cs-prev-answer {
+      max-width: 88%;
+    }
+    .cs-prev-chip {
+      display: inline-block;
+      padding: 3px 10px;
+      border: 1px solid var(--dsw-alias-border-l2);
+      border-radius: 999px;
+      color: var(--dsw-alias-label-secondary);
+      font-size: 11px;
+    }
+    .cs-prev-insert {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 6px 0;
+    }
+    .cs-prev-title {
+      font-size: 17px;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+    .cs-prev-subtitle,
+    .cs-prev-footer {
+      color: var(--dsw-alias-label-secondary);
+      font-size: 13px;
+    }
+    .cs-prev-meta {
+      color: var(--dsw-alias-label-tertiary);
+      font-size: 12px;
+    }
+    .cs-prev-rule {
+      border-top: 1px solid var(--dsw-alias-border-l1);
+    }
+    .cs-prev-hint {
+      margin: 0 0 8px;
+    }
+    .cs-prev-editor {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .cs-prev-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .cs-prev-input {
+      width: 100%;
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid var(--dsw-alias-border-l2);
+      border-radius: 8px;
+      background: var(--dsw-alias-bg-base);
+      color: var(--dsw-alias-label-primary);
+      font-size: 13px;
+    }
+    .cs-prev-input:focus-visible {
+      outline: 2px solid var(--dsw-alias-brand-primary);
+      outline-offset: 1px;
     }
     `
 
@@ -3045,66 +3201,373 @@ window.__ModuleLoader__.load({
       })
     }
 
+    // ===== views/preview.js ==========================================
+
+    /**
+     * The interactive preview at the top of the settings section.
+     *
+     * A miniature transcript, drawn with the host's own components and the same markers the capture
+     * reads. Clicking a piece hides it, clicking it again brings it back, and a right-click opens the
+     * full menu: every toggle as a checkable item, plus the two text blocks. What the preview shows is
+     * what `dom/clone.js` will prune and what `dom/inserts.js` will add, so the panel explains itself
+     * without a paragraph per switch.
+     */
+
+
+    /** The six pieces the capture can drop, in the order the preview stacks them. */
+    const PIECES = [
+      { id: 'nav', flag: 'hideNav' },
+      { id: 'attachments', flag: 'hideAttachments' },
+      { id: 'process', flag: 'hideProcess' },
+      { id: 'clock', flag: 'hideClock' },
+      { id: 'toBottom', flag: 'hideToBottom' },
+      { id: 'handles', flag: 'hideHandles' },
+    ]
+
+    /** A piece's name, in the reader's language. Literal keys so the i18n check can see them. */
+    function pieceLabel(t, id) {
+      if (id === 'nav') return t('settings.piece.nav')
+      if (id === 'attachments') return t('settings.piece.attachments')
+      if (id === 'process') return t('settings.piece.process')
+      if (id === 'clock') return t('settings.piece.clock')
+      if (id === 'toBottom') return t('settings.piece.toBottom')
+      if (id === 'handles') return t('settings.piece.handles')
+      if (id === 'head') return t('settings.piece.head')
+      if (id === 'foot') return t('settings.piece.foot')
+      if (id === 'meta') return t('settings.piece.meta')
+      if (id === 'divider') return t('settings.piece.divider')
+      return id
+    }
+
+    /** One hideable piece: a hit area when it is shown, a dashed reminder when it is not. */
+    function Piece({ id, label, hidden, onToggle, onContextMenu, children, className }) {
+      return h(
+        'div',
+        {
+          className: `cs-prev-piece ${hidden ? 'is-off' : ''} ${className ?? ''}`.trim(),
+          onClick: onToggle,
+          onContextMenu,
+          role: 'button',
+          tabIndex: 0,
+          onKeyDown: (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              onToggle()
+            }
+          },
+          title: label,
+        },
+        hidden ? h('span', { className: 'cs-prev-off' }, label) : children,
+      )
+    }
+
+    /** The header block: two lines of prose, or a placeholder when both are empty. */
+    function HeadBlock({ options, t, onEdit, onContextMenu }) {
+      const empty = options.title.length === 0 && options.subtitle.length === 0
+      return h(
+        'div',
+        {
+          className: `cs-prev-insert ${empty ? 'is-empty' : ''}`.trim(),
+          onClick: onEdit,
+          onContextMenu,
+          role: 'button',
+          tabIndex: 0,
+          title: t('settings.menu.head'),
+        },
+        empty
+          ? h('span', { className: 'cs-prev-off' }, `+ ${t('settings.menu.head')}`)
+          : [
+              h('div', { key: 'title', className: 'cs-prev-title' }, options.title || t('settings.edit.untitled')),
+              options.subtitle.length > 0
+                ? h('div', { key: 'sub', className: 'cs-prev-subtitle' }, options.subtitle)
+                : null,
+              options.divider ? h('div', { key: 'rule', className: 'cs-prev-rule' }) : null,
+            ],
+      )
+    }
+
+    /** The footer block: the reader's own line, then the metadata line the capture can add. */
+    function FootBlock({ options, t, onEdit, onContextMenu }) {
+      const empty = options.footer.length === 0 && !options.showMeta
+      return h(
+        'div',
+        {
+          className: `cs-prev-insert ${empty ? 'is-empty' : ''}`.trim(),
+          onClick: onEdit,
+          onContextMenu,
+          role: 'button',
+          tabIndex: 0,
+          title: t('settings.menu.foot'),
+        },
+        empty
+          ? h('span', { className: 'cs-prev-off' }, `+ ${t('settings.menu.foot')}`)
+          : [
+              options.divider ? h('div', { key: 'rule', className: 'cs-prev-rule' }) : null,
+              options.footer.length > 0
+                ? h('div', { key: 'text', className: 'cs-prev-footer' }, options.footer)
+                : null,
+              options.showMeta
+                ? h('div', { key: 'meta', className: 'cs-prev-meta' }, t('insert.metaSample'))
+                : null,
+            ],
+      )
+    }
+
+    /** The editor behind a click on either inserted block. */
+    function EditModal({ mode, draft, t, onChange, onClose, onSave }) {
+      const Modal = native?.Modal
+      const Input = native?.Input
+      const Switch = native?.Switch
+      const Button = native?.Button
+      if (!Modal) return null
+
+      const head = mode === 'head'
+      const field = (key, label, placeholder, maxLength) =>
+        h(
+          'label',
+          { key, className: 'cs-prev-field' },
+          h('span', { className: 'cs-set-label' }, label),
+          Input
+            ? h(Input, {
+                className: 'cs-prev-input',
+                value: draft[key],
+                maxLength,
+                placeholder,
+                onChange: (event) => onChange(key, event.target.value),
+              })
+            : h('input', {
+                className: 'cs-prev-input',
+                value: draft[key],
+                maxLength,
+                placeholder,
+                onChange: (event) => onChange(key, event.target.value),
+              }),
+        )
+
+      const toggle = (key, label) =>
+        Switch
+          ? h(Switch, { key, checked: draft[key], label, onChange: (next) => onChange(key, next) })
+          : h(
+              'label',
+              { key, className: 'cs-set-row cs-set-row-check' },
+              h('span', { className: 'cs-set-label' }, label),
+              h('input', {
+                className: 'cs-set-box',
+                type: 'checkbox',
+                checked: draft[key],
+                onChange: (event) => onChange(key, event.target.checked),
+              }),
+            )
+
+      const footer = Button
+        ? [
+            h(Button, { key: 'cancel', variant: 'ghost', size: 'sm', onClick: onClose }, t('settings.edit.cancel')),
+            h(Button, { key: 'save', variant: 'primary', size: 'sm', onClick: onSave }, t('settings.edit.save')),
+          ]
+        : [
+            h('button', { key: 'cancel', type: 'button', className: 'cs-set-reset', onClick: onClose }, t('settings.edit.cancel')),
+            h('button', { key: 'save', type: 'button', className: 'cs-set-reset', onClick: onSave }, t('settings.edit.save')),
+          ]
+
+      return h(
+        Modal,
+        {
+          open: true,
+          onClose,
+          title: head ? t('settings.menu.head') : t('settings.menu.foot'),
+          closeLabel: t('settings.edit.cancel'),
+          footer,
+        },
+        h(
+          'div',
+          { className: 'cs-prev-editor' },
+          head
+            ? field('title', t('settings.edit.title'), t('settings.add.titlePlaceholder'), INSERT_MAX_CHARS.title)
+            : field('footer', t('settings.edit.footer'), t('insert.metaSample'), INSERT_MAX_CHARS.footer),
+          head
+            ? field('subtitle', t('settings.edit.subtitle'), t('settings.add.titlePlaceholder'), INSERT_MAX_CHARS.subtitle)
+            : null,
+          h('p', { className: 'cs-set-desc' }, t('settings.edit.tokens')),
+          toggle('divider', t('settings.piece.divider')),
+          head ? null : toggle('showMeta', t('settings.piece.meta')),
+        ),
+      )
+    }
+
+    /** The panel: the mock transcript, its menu, and the editor it opens. */
+    function Preview() {
+      const t = useTranslate()
+      const options = useOptions()
+      const [open, setOpen] = useState(false)
+      const [point, setPoint] = useState({ x: 0, y: 0 })
+      const [draft, setDraft] = useState(null)
+      const countRef = useRef(0)
+
+      const toggle = useCallback((flag) => {
+        writeOptions({ [flag]: !options[flag] })
+      }, [options])
+
+      const openMenu = useCallback((event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        setPoint({ x: event.clientX, y: event.clientY })
+        setOpen(true)
+      }, [])
+
+      const edit = useCallback((mode) => {
+        countRef.current += 1
+        setOpen(false)
+        setDraft({
+          mode,
+          title: options.title,
+          subtitle: options.subtitle,
+          footer: options.footer,
+          showMeta: options.showMeta,
+          divider: options.divider,
+        })
+      }, [options])
+
+      const Menu = native?.Menu
+      const hiddenIds = PIECES.filter((piece) => options[piece.flag]).map((piece) => piece.flag)
+      const items = [
+        ...PIECES.map((piece) => ({ id: piece.flag, label: pieceLabel(t, piece.id) })),
+        { type: 'separator', id: 'sep-inserts' },
+        { id: 'head', label: options.title.length > 0 || options.subtitle.length > 0 ? t('settings.menu.headEdit') : t('settings.menu.head') },
+        { id: 'foot', label: options.footer.length > 0 || options.showMeta ? t('settings.menu.footEdit') : t('settings.menu.foot') },
+        { type: 'separator', id: 'sep-reset' },
+        { id: 'reset', label: t('settings.reset'), danger: true },
+      ]
+
+      const onSelect = (id) => {
+        if (id === 'head' || id === 'foot') {
+          edit(id)
+          return
+        }
+        setOpen(false)
+        if (id === 'reset') {
+          resetOptions()
+          return
+        }
+        if (id in options) toggle(id)
+      }
+
+      const piece = (id, children, className) => {
+        const entry = PIECES.find((candidate) => candidate.id === id)
+        return h(
+          Piece,
+          {
+            key: id,
+            id,
+            label: pieceLabel(t, id),
+            hidden: Boolean(options[entry.flag]),
+            onToggle: () => toggle(entry.flag),
+            onContextMenu: openMenu,
+            className,
+          },
+          children,
+        )
+      }
+
+      return h(
+        'div',
+        { className: 'cs-prev-wrap' },
+        h(
+          'div',
+          {
+            className: `cs-prev align-${options.align}`,
+            style: { padding: `${options.edge}px` },
+            onContextMenu: openMenu,
+          },
+          piece('nav', h('span', { className: 'cs-prev-rail' }, t('settings.sample.nav'))),
+          h(HeadBlock, { options, t, onEdit: () => edit('head'), onContextMenu: openMenu }),
+          h(
+            'div',
+            { className: 'cs-prev-turn' },
+            h('div', { className: 'cs-prev-bubble' }, t('settings.sample.user')),
+            piece('attachments', h('div', { className: 'cs-prev-files' }, t('settings.sample.files'))),
+            piece('process', h('div', { className: 'cs-prev-think' }, t('settings.sample.process'))),
+            h('div', { className: 'cs-prev-answer' }, t('settings.sample.answer')),
+            piece('clock', h('span', { className: 'cs-prev-clock' }, t('settings.sample.clock'))),
+          ),
+          h(FootBlock, { options, t, onEdit: () => edit('foot'), onContextMenu: openMenu }),
+          piece('toBottom', h('span', { className: 'cs-prev-chip' }, t('settings.sample.toBottom'))),
+          piece('handles', h('span', { className: 'cs-prev-chip' }, t('settings.sample.handles'))),
+        ),
+        Menu
+          ? h(Menu, {
+              open,
+              anchorPoint: point,
+              items,
+              selectedIds: hiddenIds,
+              onSelect,
+              onClose: () => setOpen(false),
+              portal: true,
+              align: 'start',
+            })
+          : null,
+        draft
+          ? h(EditModal, {
+              mode: draft.mode,
+              draft,
+              t,
+              onChange: (key, value) => setDraft((current) => ({ ...current, [key]: value })),
+              onClose: () => setDraft(null),
+              onSave: () => {
+                const patch = draft.mode === 'head'
+                  ? { title: draft.title, subtitle: draft.subtitle, divider: draft.divider }
+                  : { footer: draft.footer, showMeta: draft.showMeta, divider: draft.divider }
+                writeOptions(patch)
+                setDraft(null)
+              },
+            })
+          : null,
+      )
+    }
+
     // ===== views/settings.js =========================================
 
     /**
-     * The settings panel: what the picture keeps, what it adds, and how it is laid out.
+     * The settings panel: a miniature of the capture, the menu it answers to, and three choices about
+     * the layout.
      *
-     * One row per decision, the way the host's own settings sections read: a label, a sentence saying what
-     * the switch does, and the control on the right. Every value is written through `writeOptions`, so a
-     * change applies to the next capture and survives a reload without a host round-trip.
+     * The preview is the form. Every chrome piece can be switched off by clicking it in the mock
+     * transcript, every added block is edited where it will appear, and the menu behind a right-click
+     * repeats all of it as checkable items for anyone who prefers a list. Values are written through
+     * `writeOptions`, so a change applies to the next capture and survives a reload without a host
+     * round-trip.
      */
 
 
-    /** One switch: the label and description on the left, the box on the right. */
-    function SwitchRow({ title, description, checked, onChange }) {
-      return h(
-        'label',
-        { className: 'cs-set-row cs-set-row-check' },
-        h(
-          'span',
-          { className: 'cs-set-text' },
-          h('span', { className: 'cs-set-label' }, title),
-          h('span', { className: 'cs-set-desc' }, description),
-        ),
-        h('input', {
-          className: 'cs-set-box',
-          type: 'checkbox',
-          checked,
-          onChange: (event) => onChange(event.target.checked),
-        }),
-      )
-    }
+    /** One choice out of a short list, opened from a native menu when the host ships one. */
+    function MenuRow({ title, description, value, entries, onSelect }) {
+      const [open, setOpen] = useState(false)
+      const [point, setPoint] = useState({ x: 0, y: 0 })
+      const Menu = native?.Menu
+      const Button = native?.Button
+      const shown = entries.find((entry) => entry[0] === value)
 
-    /**
-     * One free-text block. The field is uncontrolled and reseeded by `seed`, so typing is never fought by
-     * the whitespace trimming the stored value goes through, while a reset still empties it.
-     */
-    function TextRow({ title, description, value, placeholder, onChange, seed }) {
+      if (!Menu || !Button) {
+        return h(
+          'label',
+          { className: 'cs-set-row' },
+          h(
+            'span',
+            { className: 'cs-set-text' },
+            h('span', { className: 'cs-set-label' }, title),
+            h('span', { className: 'cs-set-desc' }, description),
+          ),
+          h(
+            'select',
+            { className: 'cs-set-select', value, onChange: (event) => onSelect(event.target.value) },
+            entries.map(([optionValue, optionLabel]) =>
+              h('option', { key: optionValue, value: optionValue }, optionLabel),
+            ),
+          ),
+        )
+      }
+
       return h(
         'div',
-        { className: 'cs-set-row cs-set-row-stack' },
-        h(
-          'span',
-          { className: 'cs-set-text' },
-          h('span', { className: 'cs-set-label' }, title),
-          h('span', { className: 'cs-set-desc' }, description),
-        ),
-        h('input', {
-          key: `field-${seed}`,
-          className: 'cs-set-input',
-          type: 'text',
-          defaultValue: value,
-          placeholder,
-          onChange: (event) => onChange(event.target.value),
-        }),
-      )
-    }
-
-    /** One choice out of a short list. */
-    function SelectRow({ title, description, value, options, onChange }) {
-      return h(
-        'label',
         { className: 'cs-set-row' },
         h(
           'span',
@@ -3113,15 +3576,30 @@ window.__ModuleLoader__.load({
           h('span', { className: 'cs-set-desc' }, description),
         ),
         h(
-          'select',
-          {
-            className: 'cs-set-select',
-            value,
-            onChange: (event) => onChange(event.target.value),
-          },
-          options.map(([optionValue, optionLabel]) =>
-            h('option', { key: optionValue, value: optionValue }, optionLabel),
-          ),
+          'div',
+          { className: 'cs-set-picker' },
+          h(Button, {
+            variant: 'outline',
+            size: 'sm',
+            onClick: (event) => {
+              const box = event.currentTarget.getBoundingClientRect()
+              setPoint({ x: box.left, y: box.bottom + 4 })
+              setOpen((current) => !current)
+            },
+          }, shown ? shown[1] : value),
+          h(Menu, {
+            open,
+            anchorPoint: point,
+            align: 'end',
+            side: 'bottom',
+            selectedId: value,
+            items: entries.map(([optionValue, optionLabel]) => ({ id: optionValue, label: optionLabel })),
+            onSelect: (id) => {
+              setOpen(false)
+              onSelect(id)
+            },
+            onClose: () => setOpen(false),
+          }),
         ),
       )
     }
@@ -3130,125 +3608,46 @@ window.__ModuleLoader__.load({
     function SettingsSection() {
       const t = useTranslate()
       const options = useOptions()
-      const [seed, setSeed] = useState(0)
-
-      const edgeLabels = [
-        [String(EDGE_CHOICES[0]), t('settings.edge.tight')],
-        [String(EDGE_CHOICES[1]), t('settings.edge.normal')],
-        [String(EDGE_CHOICES[2]), t('settings.edge.loose')],
-      ]
-      const scaleLabels = [
-        [SCALE_CHOICES[0], t('settings.scale.auto')],
-        [SCALE_CHOICES[1], t('settings.scale.x1')],
-        [SCALE_CHOICES[2], t('settings.scale.x2')],
-        [SCALE_CHOICES[3], t('settings.scale.x3')],
-      ]
 
       return h(
         'div',
         { className: 'cs-set' },
         h('p', { className: 'cs-set-intro' }, t('settings.intro')),
+        h(Preview, {}),
+        h('p', { className: 'cs-set-desc cs-prev-hint' }, t('settings.previewHint')),
 
-        h('div', { className: 'cs-set-group' }, t('settings.group.hide')),
-        h(SwitchRow, {
-          title: t('settings.hide.clock'),
-          description: t('settings.hide.clockHint'),
-          checked: options.hideClock,
-          onChange: (value) => writeOptions({ hideClock: value }),
-        }),
-        h(SwitchRow, {
-          title: t('settings.hide.process'),
-          description: t('settings.hide.processHint'),
-          checked: options.hideProcess,
-          onChange: (value) => writeOptions({ hideProcess: value }),
-        }),
-        h(SwitchRow, {
-          title: t('settings.hide.attachments'),
-          description: t('settings.hide.attachmentsHint'),
-          checked: options.hideAttachments,
-          onChange: (value) => writeOptions({ hideAttachments: value }),
-        }),
-        h(SwitchRow, {
-          title: t('settings.hide.nav'),
-          description: t('settings.hide.navHint'),
-          checked: options.hideNav,
-          onChange: (value) => writeOptions({ hideNav: value }),
-        }),
-        h(SwitchRow, {
-          title: t('settings.hide.handles'),
-          description: t('settings.hide.handlesHint'),
-          checked: options.hideHandles,
-          onChange: (value) => writeOptions({ hideHandles: value }),
-        }),
-        h(SwitchRow, {
-          title: t('settings.hide.toBottom'),
-          description: t('settings.hide.toBottomHint'),
-          checked: options.hideToBottom,
-          onChange: (value) => writeOptions({ hideToBottom: value }),
-        }),
-
-        h('div', { className: 'cs-set-group' }, t('settings.group.add')),
-        h(TextRow, {
-          title: t('settings.add.title'),
-          description: t('settings.add.titleHint'),
-          placeholder: t('settings.add.titlePlaceholder'),
-          value: options.title,
-          seed,
-          onChange: (value) => writeOptions({ title: value }),
-        }),
-        h(TextRow, {
-          title: t('settings.add.subtitle'),
-          description: t('settings.add.subtitleHint'),
-          placeholder: t('settings.add.titlePlaceholder'),
-          value: options.subtitle,
-          seed,
-          onChange: (value) => writeOptions({ subtitle: value }),
-        }),
-        h(TextRow, {
-          title: t('settings.add.footer'),
-          description: t('settings.add.footerHint'),
-          placeholder: t('settings.add.titlePlaceholder'),
-          value: options.footer,
-          seed,
-          onChange: (value) => writeOptions({ footer: value }),
-        }),
-        h(SwitchRow, {
-          title: t('settings.add.meta'),
-          description: t('settings.add.metaHint'),
-          checked: options.showMeta,
-          onChange: (value) => writeOptions({ showMeta: value }),
-        }),
-        h(SwitchRow, {
-          title: t('settings.add.divider'),
-          description: t('settings.add.dividerHint'),
-          checked: options.divider,
-          onChange: (value) => writeOptions({ divider: value }),
-        }),
-
-        h('div', { className: 'cs-set-group' }, t('settings.group.layout')),
-        h(SelectRow, {
+        h(MenuRow, {
           title: t('settings.layout.align'),
           description: t('settings.layout.alignHint'),
           value: options.align,
-          options: [
+          entries: [
             ['left', t('settings.align.left')],
             ['center', t('settings.align.center')],
           ],
-          onChange: (value) => writeOptions({ align: value }),
+          onSelect: (value) => writeOptions({ align: value }),
         }),
-        h(SelectRow, {
+        h(MenuRow, {
           title: t('settings.layout.edge'),
           description: t('settings.layout.edgeHint'),
           value: String(options.edge),
-          options: edgeLabels,
-          onChange: (value) => writeOptions({ edge: Number(value) }),
+          entries: [
+            [String(EDGE_CHOICES[0]), t('settings.edge.tight')],
+            [String(EDGE_CHOICES[1]), t('settings.edge.normal')],
+            [String(EDGE_CHOICES[2]), t('settings.edge.loose')],
+          ],
+          onSelect: (value) => writeOptions({ edge: Number(value) }),
         }),
-        h(SelectRow, {
+        h(MenuRow, {
           title: t('settings.layout.scale'),
           description: t('settings.layout.scaleHint'),
           value: options.scale,
-          options: scaleLabels,
-          onChange: (value) => writeOptions({ scale: value }),
+          entries: [
+            [SCALE_CHOICES[0], t('settings.scale.auto')],
+            [SCALE_CHOICES[1], t('settings.scale.x1')],
+            [SCALE_CHOICES[2], t('settings.scale.x2')],
+            [SCALE_CHOICES[3], t('settings.scale.x3')],
+          ],
+          onSelect: (value) => writeOptions({ scale: value }),
         }),
 
         h(
@@ -3260,10 +3659,7 @@ window.__ModuleLoader__.load({
             {
               type: 'button',
               className: 'cs-set-reset',
-              onClick: () => {
-                resetOptions()
-                setSeed((current) => current + 1)
-              },
+              onClick: () => resetOptions(),
             },
             t('settings.reset'),
           ),

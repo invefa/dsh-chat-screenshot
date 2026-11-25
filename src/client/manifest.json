@@ -22,6 +22,7 @@
   "views/icons.js",
   "views/menu.js",
   "views/buttons.js",
+  "views/preview.js",
   "views/settings.js",
   "apply.js"
 ]
