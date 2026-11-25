@@ -284,6 +284,11 @@ export const RULE_PRESETS = [
 /** How long a hidden element is shown in place when its chip is clicked. */
 export const PEEK_MS = 1600
 
+/** The dock's height: what it opens at, the least it may be dragged to, and its share of the surface. */
+export const DOCK_HEIGHT = 300
+export const DOCK_MIN = 176
+export const DOCK_RATIO = 0.62
+
 /**
  * What the capture's own hiding does to a matched element: it stays in the copy with no box, so a
  * capture measures the transcript without it while the edit surface can still show where it was.

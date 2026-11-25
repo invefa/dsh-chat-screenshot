@@ -10,14 +10,23 @@ import { BLOCK_PAYLOAD } from './drag.js'
 /**
  * Build the palette.
  * @param props - t, options, blockSelection, onAdd(kind, shape), onDropCustom(id), onToken(name),
- *   onDrag(payload).
+ *   onDrag(payload), onNewComponent(), onEditComponent(id).
  */
 export function libraryView(props) {
-  const { t, options, blockSelection, onAdd, onDrag, onToken, onDropCustom } = props
+  const { t, options, blockSelection, onAdd, onDrag, onToken, onDropCustom, onNewComponent, onEditComponent } = props
   const library = h(
     'div',
     { className: 'cs-ed-lib' },
-    h('div', { className: 'cs-ed-lead-row' }, h('span', { className: 'cs-ed-label' }, t('settings.editor.library'))),
+    h(
+      'div',
+      { className: 'cs-ed-lead-row' },
+      h('span', { className: 'cs-ed-label' }, t('settings.editor.library')),
+      h(
+        'button',
+        { type: 'button', className: 'cs-ed-newcmp', onClick: () => onNewComponent() },
+        '+ ' + t('settings.editor.component.new'),
+      ),
+    ),
     h(
       'div',
       { className: 'cs-ed-chips' },
@@ -82,6 +91,16 @@ export function libraryView(props) {
                   onClick: () => onAdd(entry.block.kind, entry.block),
                 },
                 entry.name,
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'cs-ed-x',
+                  title: t('settings.editor.component.edit'),
+                  onClick: () => onEditComponent(entry.id),
+                },
+                '...',
               ),
               h(
                 'button',

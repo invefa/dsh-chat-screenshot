@@ -507,6 +507,21 @@ export function dropCustom(id) {
   writeOptions({ custom: current.custom.filter((entry) => entry.id !== id) })
 }
 
+/**
+ * Save a component, replacing the entry with the same id when one exists. Returns the stored entry,
+ * or null when the name is empty or the block carried nothing.
+ */
+export function storeCustom(id, name, block) {
+  const label = typeof name === 'string' ? name.trim().slice(0, BLOCK_NAME_CHARS) : ''
+  if (label === '' || block === null || typeof block !== 'object') return null
+  const current = readOptions()
+  const custom = normalizeCustom({ id: id ?? undefined, name: label, block })
+  if (custom === null) return null
+  const kept = current.custom.filter((entry) => entry.id !== custom.id)
+  writeOptions({ custom: [custom, ...kept].slice(0, MAX_CUSTOM) })
+  return custom
+}
+
 /** The options in a component, re-rendered on every change. */
 export function useOptions() {
   return react.useSyncExternalStore(subscribeOptions, readOptions, readOptions)

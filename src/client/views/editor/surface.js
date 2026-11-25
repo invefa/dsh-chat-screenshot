@@ -20,6 +20,8 @@
 
 import {
   BLOCK_ATTRIBUTE,
+  DOCK_HEIGHT,
+  DOCK_RATIO,
   FIELD_ATTRIBUTE,
   MAX_CUSTOM,
   PEEK_MS,
@@ -43,6 +45,7 @@ import {
   ruleFor,
   saveCustom,
   saveRule,
+  storeCustom,
   updateBlock,
   useOptions,
   writeOptions,
@@ -54,6 +57,9 @@ import { describeSelected, entryLabel, kindLabel, pieceLabel } from './labels.js
 import { BLOCK_PAYLOAD, dropTarget, readDrag, writeDrag } from './drag.js'
 import { libraryView } from './library.js'
 import { blockInspector, elementInspector } from './inspector.js'
+import { contentView } from './content.js'
+import { componentEditor } from './components.js'
+import { dockView } from './dock.js'
 
 /** The names the built-in pieces answer to, so a hidden one still reads as something. */
 function findConversation() {
@@ -119,12 +125,19 @@ function CaptureSurface({ onClose }) {
   const [selection, setSelection] = useState(null)
   const [pick, setPick] = useState(false)
   const [menu, setMenu] = useState(null)
+  const [rowMenu, setRowMenu] = useState(null)
+  const [tab, setTab] = useState('content')
+  const [dockHeight, setDockHeight] = useState(DOCK_HEIGHT)
+  const [dockFolded, setDockFolded] = useState(false)
+  const [dockDragging, setDockDragging] = useState(false)
+  const [addZone, setAddZone] = useState('bottom')
   const [drag, setDrag] = useState(null)
   const [draftProp, setDraftProp] = useState(STYLE_PROPS[0])
   const [draftValue, setDraftValue] = useState('')
   const [draftAttr, setDraftAttr] = useState('')
   const [draftAttrValue, setDraftAttrValue] = useState('')
   const [customName, setCustomName] = useState('')
+  const [draftComponent, setDraftComponent] = useState(null)
 
   pickRef.current = pick
   selectionRef.current = selection
@@ -194,12 +207,14 @@ function CaptureSurface({ onClose }) {
     const chooseBlock = (id) => {
       setSelection({ type: 'block', id })
       setCustomName('')
+      setTab('content')
       return id
     }
 
     const choose = (node) => {
       const selector = elementKey(node, clone)
       setSelection({ type: 'element', selector, tag: node.tagName.toLowerCase(), text: autoName(node) })
+      setTab('element')
       return selector
     }
 
@@ -478,11 +493,12 @@ function CaptureSurface({ onClose }) {
     bump()
   }
 
-  /** Append one block of a kind to the bottom zone, for a click instead of a drag. */
+  /** Append one block of a kind to the zone the reader picked, for a click instead of a drag. */
   const appendBlock = (kind, shape) => {
-    const created = addBlock('bottom', { ...(shape ?? {}), kind, zone: 'bottom' })
+    const created = addBlock(addZone, { ...(shape ?? {}), kind, zone: addZone })
     if (created !== null) {
       setSelection({ type: 'block', id: created.id })
+      setTab('content')
       bump()
     }
   }
@@ -651,91 +667,224 @@ function CaptureSurface({ onClose }) {
       bump()
     },
     onToken: addToken,
+    onNewComponent: () => {
+      setDraftComponent({ id: null, name: '', block: { kind: 'text', text: '', size: 'body', align: 'left' } })
+      setTab('library')
+      setPick(false)
+    },
+    onEditComponent: (id) => {
+      const entry = options.custom.find((item) => item.id === id)
+      if (entry === undefined) return
+      setDraftComponent({ id: entry.id, name: entry.name, block: { ...entry.block } })
+      setTab('library')
+    },
     onDrag: (payload) => {
       writeDrag(payload)
       setDrag(null)
     },
   })
 
+  const composer = h(componentEditor, {
+    t,
+    Menu,
+    Button,
+    draft: draftComponent,
+    onChange: (patch) => setDraftComponent((current) => ({ ...current, ...patch })),
+    onSave: () => {
+      const stored = storeCustom(draftComponent.id, draftComponent.name, draftComponent.block)
+      if (stored === null) return
+      setDraftComponent(null)
+      bump()
+    },
+    onDelete: () => {
+      if (draftComponent.id !== null) dropCustom(draftComponent.id)
+      setDraftComponent(null)
+      bump()
+    },
+    onCancel: () => setDraftComponent(null),
+  })
+
+  const tabs = [
+    { id: 'content', label: t('settings.editor.tab.content'), count: options.blocks.length },
+    { id: 'element', label: t('settings.editor.tab.element'), count: hiddenEntries.length },
+    { id: 'library', label: t('settings.editor.tab.library'), count: 0 },
+  ]
+
+  const hiddenSection = h(
+    'div',
+    { className: 'cs-ed-hidden' },
+    h('div', { className: 'cs-ed-panel-head' }, t('settings.editor.hidden')),
+    hiddenEntries.length === 0
+      ? h('div', { className: 'cs-ed-hintline' }, t('settings.editor.hiddenEmpty'))
+      : h(
+          'div',
+          { className: 'cs-ed-chips' },
+          ...hiddenEntries.map((entry) =>
+            h(
+              'button',
+              {
+                key: entry.kind + ':' + entry.id,
+                type: 'button',
+                className: 'cs-ed-chip',
+                title: t('settings.editor.hiddenHint'),
+                onClick: () => peek(entry),
+                onDoubleClick: () => restore(entry),
+              },
+              h('span', { className: 'cs-ed-chip-part' }, entryLabel(t, entry)),
+              entry.kind === 'rule' && (entry.elements ?? []).length > 1
+                ? h('span', { className: 'cs-ed-chip-count' }, String(entry.elements.length))
+                : null,
+            ),
+          ),
+        ),
+  )
+
+  const contentBody = h(
+    'div',
+    { className: 'cs-ed-split' },
+    h(
+      'div',
+      { className: 'cs-ed-split-main' },
+      h(contentView, {
+        t,
+        options,
+        selection,
+        onSelect: (id) => {
+          setSelection({ type: 'block', id })
+          setCustomName('')
+        },
+        onAddZone: (zone) => {
+          setAddZone(zone)
+          setTab('library')
+          setPick(false)
+        },
+        onRowMenu: (next) => setRowMenu(next),
+      }),
+    ),
+    h(
+      'div',
+      { className: 'cs-ed-split-side' },
+      blockSelection !== null
+        ? h('div', { className: 'cs-ed-panel' }, h('div', { className: 'cs-ed-panel-head' }, kindLabel(t, blockSelection.kind)), inspector)
+        : h('div', { className: 'cs-ed-empty-note' }, t('settings.editor.content.pickBlock')),
+    ),
+  )
+
+  const elementBody = h(
+    'div',
+    { className: 'cs-ed-split' },
+    h('div', { className: 'cs-ed-split-side is-narrow' }, hiddenSection),
+    h(
+      'div',
+      { className: 'cs-ed-split-main' },
+      elementSelection !== null
+        ? h('div', { className: 'cs-ed-panel' }, h('div', { className: 'cs-ed-panel-head' }, elementSelection.tag), inspector)
+        : h('div', { className: 'cs-ed-empty-note' }, t('settings.editor.side.none')),
+    ),
+  )
+
+  const libraryBody = h(
+    'div',
+    { className: 'cs-ed-libwrap' },
+    h('div', { className: 'cs-ed-split' }, h('div', { className: 'cs-ed-split-main' }, library), h('div', { className: 'cs-ed-split-side' }, draftComponent === null ? h('div', { className: 'cs-ed-empty-note' }, t('settings.editor.component.empty')) : composer)),
+  )
+
+  const body = tab === 'library' ? libraryBody : tab === 'element' ? elementBody : contentBody
+
+  const rowMenuItems =
+    rowMenu === null
+      ? []
+      : [
+          { id: 'rowTop', label: t('settings.editor.block.toTop') },
+          { id: 'rowBottom', label: t('settings.editor.block.toBottom') },
+          { type: 'separator' },
+          { id: 'rowDelete', label: t('settings.editor.block.delete'), danger: true },
+        ]
+
+  const onRowMenu = (id) => {
+    const current = rowMenu
+    setRowMenu(null)
+    if (current === null) return
+    if (id === 'rowDelete') {
+      removeBlock(current.id)
+      setSelection(null)
+      bump()
+      return
+    }
+    if (id === 'rowTop') {
+      moveBlock(current.id, 'top', 99)
+      bump()
+      return
+    }
+    if (id === 'rowBottom') {
+      moveBlock(current.id, 'bottom', 99)
+      bump()
+    }
+  }
+
+  const onResizeStart = (event) => {
+    if (typeof event.button === 'number' && event.button !== 0) return
+    event.preventDefault()
+    const startY = event.clientY
+    const startHeight = dockFolded ? DOCK_MIN : dockHeight
+    const limit = Math.max(DOCK_MIN, Math.round((pane === null ? 600 : pane.height) * DOCK_RATIO))
+    setDockDragging(true)
+    setDockFolded(false)
+    const move = (moveEvent) => {
+      const next = startHeight + (startY - moveEvent.clientY)
+      setDockHeight(Math.max(DOCK_MIN, Math.min(limit, next)))
+    }
+    const stop = () => {
+      setDockDragging(false)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+  }
+
+  const toggleDock = () => setDockFolded((value) => value !== true)
+
   return h(
     'div',
-    { className: 'cs-ed-wrap', style: pane === null ? undefined : { left: `${pane.left}px`, top: `${pane.top}px`, width: `${pane.width}px`, height: `${pane.height}px` } },
-    h(
-      'div',
-      { className: 'cs-ed-bar' },
-      h(
-        'div',
-        { className: 'cs-ed-lead' },
-        h('div', { className: 'cs-ed-title' }, t('settings.title')),
-        h('div', { className: 'cs-ed-hint' }, t('settings.editor.hint')),
-      ),
-      h(
-        'div',
-        { className: 'cs-ed-actions' },
-        h(
-          Button,
-          {
-            variant: pick ? 'primary' : 'outline',
-            size: 'sm',
-            onClick: () => {
-              const next = pick !== true
-              setPick(next)
-              if (next) setSelection(null)
-            },
-          },
-          t('settings.editor.pick'),
-        ),
-        h(
-          Button,
-          {
-            variant: 'ghost',
-            size: 'sm',
-            onClick: () => {
-              resetOptions()
-              setSelection(null)
-              bump()
-            },
-          },
-          t('settings.reset'),
-        ),
-        h(Button, { variant: 'primary', size: 'sm', onClick: onClose }, t('settings.editor.done')),
-      ),
-    ),
+    {
+      className: pick ? 'cs-ed-wrap is-pick' : 'cs-ed-wrap',
+      style:
+        pane === null
+          ? undefined
+          : { left: pane.left + 'px', top: pane.top + 'px', width: pane.width + 'px', height: pane.height + 'px' },
+    },
     missing ? h('div', { className: 'cs-ed-empty' }, t('settings.editor.noConversation')) : null,
-    h('div', { className: 'cs-ed-host', ref: hostRef, onDragOver: onDragOver, onDragLeave: onDragLeave, onDrop: onDrop }),
-    drag === null ? null : h('div', { className: 'cs-ed-drop', style: { top: `${drag.y}px` } }),
-    h(
-      'div',
-      { className: 'cs-ed-tray' },
-      h(
-        'div',
-        { className: 'cs-ed-hidden' },
-        h('span', { className: 'cs-ed-label' }, t('settings.editor.hidden')),
-        hiddenEntries.length === 0
-          ? h('span', { className: 'cs-ed-hintline' }, t('settings.editor.hiddenEmpty'))
-          : h(
-              'span',
-              { className: 'cs-ed-chips' },
-              ...hiddenEntries.map((entry) =>
-                h(
-                  'span',
-                  {
-                    key: `${entry.kind}:${entry.id}`,
-                    className: 'cs-ed-chip',
-                    title: t('settings.editor.hiddenHint'),
-                    onClick: () => peek(entry),
-                    onDoubleClick: () => restore(entry),
-                  },
-                  h('span', { className: 'cs-ed-chip-part' }, entryLabel(t, entry)),
-                  entry.kind === 'rule' && (entry.elements ?? []).length > 1
-                    ? h('span', { className: 'cs-ed-chip-count' }, String(entry.elements.length))
-                    : null,
-                ),
-              ),
-            ),
-      ),
-      h('div', { className: 'cs-ed-cols' }, h('div', { className: 'cs-ed-pane' }, inspector), h('div', { className: 'cs-ed-pane' }, library)),
-    ),
+    h('div', { className: 'cs-ed-canvas' }, h('div', { className: 'cs-ed-host', ref: hostRef, onDragOver: onDragOver, onDragLeave: onDragLeave, onDrop: onDrop })),
+    drag === null ? null : h('div', { className: 'cs-ed-drop', style: { top: drag.y + 'px' } }),
+    h(dockView, {
+      t,
+      Button,
+      tabs,
+      current: tab,
+      onTab: (id) => {
+        setTab(id)
+        setRowMenu(null)
+      },
+      pick,
+      onPick: () => {
+        const next = pick !== true
+        setPick(next)
+        if (next) setSelection(null)
+      },
+      onReset: () => {
+        resetOptions()
+        setSelection(null)
+        bump()
+      },
+      onDone: onClose,
+      collapsed: dockFolded,
+      onToggle: toggleDock,
+      body,
+      height: dockHeight,
+      dragging: dockDragging,
+      onResizeStart,
+    }),
     h(Menu, {
       open: menu !== null,
       anchorPoint: menu === null ? undefined : { x: menu.x, y: menu.y },
@@ -745,6 +894,16 @@ function CaptureSurface({ onClose }) {
       selectedIds: [],
       onSelect: onMenu,
       onClose: () => setMenu(null),
+    }),
+    h(Menu, {
+      open: rowMenu !== null,
+      anchorPoint: rowMenu === null ? undefined : { x: rowMenu.x, y: rowMenu.y },
+      align: 'start',
+      portal: true,
+      items: rowMenuItems,
+      selectedIds: [],
+      onSelect: onRowMenu,
+      onClose: () => setRowMenu(null),
     }),
   )
 

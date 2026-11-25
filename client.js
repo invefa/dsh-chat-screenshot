@@ -305,6 +305,11 @@ window.__ModuleLoader__.load({
     /** How long a hidden element is shown in place when its chip is clicked. */
     const PEEK_MS = 1600
 
+    /** The dock's height: what it opens at, the least it may be dragged to, and its share of the surface. */
+    const DOCK_HEIGHT = 300
+    const DOCK_MIN = 176
+    const DOCK_RATIO = 0.62
+
     /**
      * What the capture's own hiding does to a matched element: it stays in the copy with no box, so a
      * capture measures the transcript without it while the edit surface can still show where it was.
@@ -863,6 +868,21 @@ window.__ModuleLoader__.load({
       writeOptions({ custom: current.custom.filter((entry) => entry.id !== id) })
     }
 
+    /**
+     * Save a component, replacing the entry with the same id when one exists. Returns the stored entry,
+     * or null when the name is empty or the block carried nothing.
+     */
+    function storeCustom(id, name, block) {
+      const label = typeof name === 'string' ? name.trim().slice(0, BLOCK_NAME_CHARS) : ''
+      if (label === '' || block === null || typeof block !== 'object') return null
+      const current = readOptions()
+      const custom = normalizeCustom({ id: id ?? undefined, name: label, block })
+      if (custom === null) return null
+      const kept = current.custom.filter((entry) => entry.id !== custom.id)
+      writeOptions({ custom: [custom, ...kept].slice(0, MAX_CUSTOM) })
+      return custom
+    }
+
     /** The options in a component, re-rendered on every change. */
     function useOptions() {
       return react.useSyncExternalStore(subscribeOptions, readOptions, readOptions)
@@ -940,8 +960,30 @@ window.__ModuleLoader__.load({
       'settings.editor.preset.plain': '去底色',
       'settings.editor.preset.mono': '等宽字体',
       'settings.editor.preset.small': '小字号',
+      'settings.editor.component.title': '设计组件',
+      'settings.editor.component.new': '新建组件',
+      'settings.editor.component.edit': '编辑组件',
+      'settings.editor.component.kind': '类型',
+      'settings.editor.component.name': '组件名称',
+      'settings.editor.component.namePlaceholder': '给这个组件起个名字',
+      'settings.editor.component.preview': '预览',
+      'settings.editor.component.previewEmpty': '还没有内容，写点什么就能在这里看到。',
+      'settings.editor.component.hint': '组件就是一块内容。存进组件库之后，可以拖到画面的任何位置。',
+      'settings.editor.component.save': '保存组件',
+      'settings.editor.component.cancel': '取消',
+      'settings.editor.component.delete': '删除组件',
+      'settings.editor.component.empty': '选中一个组件进行编辑，或者新建一个。',
       'settings.editor.library': '组件库',
       'settings.editor.tokensHint': '插入变量',
+      'settings.editor.tab.content': '内容',
+      'settings.editor.tab.element': '元素',
+      'settings.editor.tab.library': '组件库',
+      'settings.editor.dock.resize': '拖动调整高度，双击折叠',
+      'settings.editor.content.add': '添加组件',
+      'settings.editor.content.empty': '这一区还没有内容',
+      'settings.editor.content.emptyText': '从组件库拖一个过来，或者点上面的添加',
+      'settings.editor.content.more': '更多操作',
+      'settings.editor.content.pickBlock': '点一个内容块，这里会出现它的设置',
       'settings.editor.zone.top': '页头',
       'settings.editor.zone.bottom': '页脚',
       'settings.editor.align.left': '左对齐',
@@ -1054,8 +1096,30 @@ window.__ModuleLoader__.load({
       'settings.editor.preset.plain': 'No fill',
       'settings.editor.preset.mono': 'Monospace',
       'settings.editor.preset.small': 'Smaller',
+      'settings.editor.component.title': 'Component designer',
+      'settings.editor.component.new': 'New component',
+      'settings.editor.component.edit': 'Edit component',
+      'settings.editor.component.kind': 'Kind',
+      'settings.editor.component.name': 'Name',
+      'settings.editor.component.namePlaceholder': 'Name this component',
+      'settings.editor.component.preview': 'Preview',
+      'settings.editor.component.previewEmpty': 'Nothing to show yet. Type something and it appears here.',
+      'settings.editor.component.hint': 'A component is one block. Once it is in the library you can drag it anywhere on the picture.',
+      'settings.editor.component.save': 'Save component',
+      'settings.editor.component.cancel': 'Cancel',
+      'settings.editor.component.delete': 'Delete component',
+      'settings.editor.component.empty': 'Pick a component to edit, or start a new one.',
       'settings.editor.library': 'Library',
       'settings.editor.tokensHint': 'Insert a variable',
+      'settings.editor.tab.content': 'Content',
+      'settings.editor.tab.element': 'Elements',
+      'settings.editor.tab.library': 'Library',
+      'settings.editor.dock.resize': 'Drag to resize, double-click to fold',
+      'settings.editor.content.add': 'Add a block',
+      'settings.editor.content.empty': 'Nothing in this zone yet',
+      'settings.editor.content.emptyText': 'Drag one over from the library, or use the add button above',
+      'settings.editor.content.more': 'More actions',
+      'settings.editor.content.pickBlock': 'Pick a block and its settings show up here',
       'settings.editor.zone.top': 'Top',
       'settings.editor.zone.bottom': 'Bottom',
       'settings.editor.align.left': 'Left',
@@ -1372,89 +1436,304 @@ window.__ModuleLoader__.load({
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      /* A frameless window can hand the page a viewport that starts under its own title bar;
-         the inset keeps the bar and the buttons clear of it. */
-      padding: max(10px, env(safe-area-inset-top)) 0 0;
+      /* The overlay covers the conversation itself; a frameless window paints its title bar over the
+         page, so nothing interactive may sit at the very top of the screen. */
+      -webkit-app-region: no-drag;
       background: var(--dsw-alias-bg-base);
       color: var(--dsw-alias-label-primary);
     }
-    .cs-ed-bar {
+    .cs-ed-canvas {
+      position: relative;
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      background: var(--dsw-alias-bg-base);
+    }
+    .cs-ed-host {
+      display: flex;
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .cs-ed-dock {
       display: flex;
       flex: none;
-      flex-wrap: wrap;
-      gap: 16px;
-      row-gap: 10px;
-      align-items: flex-start;
-      justify-content: space-between;
-      padding: 14px 20px;
-      border-bottom: 1px solid var(--dsw-alias-border-l1);
-      background: var(--dsw-alias-bg-layer-1);
-    }
-    .cs-ed-lead {
-      display: flex;
-      flex: 1 1 320px;
       flex-direction: column;
-      gap: 4px;
+      min-height: 0;
+      border-top: 1px solid var(--dsw-alias-border-l1);
+      background: var(--dsw-alias-bg-layer-1);
+      box-shadow: 0 -8px 24px rgba(0, 0, 0, .08);
+      transition: height .18s ease;
+    }
+    .cs-ed-dock.is-collapsed {
+      height: auto;
+    }
+    .cs-ed-resize {
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      height: 12px;
+      cursor: ns-resize;
+      touch-action: none;
+    }
+    .cs-ed-grip {
+      width: 44px;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--dsw-alias-border-l2);
+      transition: width .16s ease, background .16s ease;
+    }
+    .cs-ed-resize:hover .cs-ed-grip,
+    .cs-ed-dock.is-dragging .cs-ed-grip {
+      width: 60px;
+      background: var(--dsw-alias-brand-primary);
+    }
+    .cs-ed-dock-head {
+      display: flex;
+      flex: none;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px 8px;
+    }
+    .cs-ed-tabs {
+      display: flex;
+      align-items: center;
+      gap: 2px;
       min-width: 0;
     }
-    .cs-ed-title {
-      font-size: 14px;
+    .cs-ed-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--dsw-alias-label-secondary);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .14s ease, color .14s ease;
+    }
+    .cs-ed-tab:hover {
+      background: var(--dsw-alias-bg-layer-2);
+      color: var(--dsw-alias-label-primary);
+    }
+    .cs-ed-tab.is-on {
+      background: var(--dsw-alias-bg-layer-3);
+      color: var(--dsw-alias-label-primary);
       font-weight: 600;
     }
-    .cs-ed-hint {
-      max-width: min(70ch, 100%);
+    .cs-ed-tab-count {
+      min-width: 16px;
+      padding: 0 5px;
+      border-radius: 999px;
+      background: var(--dsw-alias-bg-layer-2);
       color: var(--dsw-alias-label-secondary);
-      font-size: 12px;
-      line-height: 1.6;
+      font-size: 10px;
+      line-height: 16px;
+      text-align: center;
     }
-    .cs-ed-actions {
+    .cs-ed-head-actions {
       display: flex;
-      flex: none;
       gap: 8px;
       align-items: center;
       margin-left: auto;
     }
-    .cs-ed-body {
+    .cs-ed-dock-body {
       display: flex;
       flex: 1;
       min-height: 0;
-    }
-    .cs-ed-host {
-      flex: 1;
-      min-width: 0;
-      min-height: 0;
-      display: flex;
-    }
-    .cs-ed-tray {
-      display: flex;
-      flex: none;
-      flex-direction: column;
-      max-height: 42%;
-      min-height: 132px;
       overflow: hidden;
-      border-top: 1px solid var(--dsw-alias-border-l1);
-      background: var(--dsw-alias-bg-layer-1);
+      animation: cs-dock-in .16s ease;
     }
-    .cs-ed-cols {
+    @keyframes cs-dock-in {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+    .cs-ed-split {
       display: flex;
       flex: 1;
+      min-width: 0;
       min-height: 0;
-      gap: 0;
     }
-    .cs-ed-pane {
+    .cs-ed-split-main {
       display: flex;
       flex: 1;
       min-width: 0;
       min-height: 0;
       flex-direction: column;
-      gap: 10px;
       overflow: auto;
-      padding: 12px 16px 16px;
+      padding: 4px 16px 14px;
+    }
+    .cs-ed-split-side {
+      display: flex;
+      flex: 0 0 320px;
+      min-height: 0;
+      flex-direction: column;
+      gap: 8px;
+      overflow: auto;
+      padding: 4px 16px 14px;
+      border-left: 1px solid var(--dsw-alias-border-l1);
       font-size: 12px;
     }
-    .cs-ed-pane + .cs-ed-pane {
-      flex: 0 0 300px;
-      border-left: 1px solid var(--dsw-alias-border-l1);
+    .cs-ed-split-side.is-narrow {
+      flex: 0 0 260px;
+    }
+    .cs-ed-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .cs-ed-panel-head {
+      color: var(--dsw-alias-label-secondary);
+      font-size: 11px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .cs-ed-empty-note {
+      color: var(--dsw-alias-label-tertiary);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    .cs-ed-hintline {
+      color: var(--dsw-alias-label-tertiary);
+      font-size: 12px;
+    }
+    .cs-ed-libwrap {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
+    .cs-ed-zones {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .cs-ed-zone {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .cs-ed-zone-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cs-ed-zone-name {
+      color: var(--dsw-alias-label-secondary);
+      font-size: 11px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .cs-ed-zone-count {
+      color: var(--dsw-alias-label-tertiary);
+      font-size: 11px;
+    }
+    .cs-ed-zone-add {
+      margin-left: auto;
+      padding: 2px 8px;
+      border: 1px dashed var(--dsw-alias-border-l2);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--dsw-alias-label-secondary);
+      font: inherit;
+      font-size: 11px;
+      cursor: pointer;
+      transition: border-color .14s ease, color .14s ease;
+    }
+    .cs-ed-zone-add:hover {
+      border-color: var(--dsw-alias-brand-primary);
+      color: var(--dsw-alias-brand-primary);
+    }
+    .cs-ed-zone-empty {
+      padding: 10px 12px;
+      border: 1px dashed var(--dsw-alias-border-l1);
+      border-radius: 8px;
+      color: var(--dsw-alias-label-tertiary);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .cs-ed-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .cs-ed-row-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: var(--dsw-alias-bg-layer-2);
+      color: var(--dsw-alias-label-primary);
+      font: inherit;
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+      transition: background .14s ease, border-color .14s ease;
+    }
+    .cs-ed-row-item:hover {
+      background: var(--dsw-alias-bg-layer-3);
+    }
+    .cs-ed-row-item.is-on {
+      border-color: var(--dsw-alias-brand-primary);
+      background: var(--dsw-alias-bg-layer-3);
+    }
+    .cs-ed-row-kind {
+      flex: none;
+      color: var(--dsw-alias-label-secondary);
+      font-size: 11px;
+    }
+    .cs-ed-row-text {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cs-ed-row-more {
+      flex: none;
+      padding: 2px 6px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--dsw-alias-label-secondary);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .cs-ed-row-more:hover {
+      background: var(--dsw-alias-bg-layer-1);
+      color: var(--dsw-alias-label-primary);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .cs-ed-dock,
+      .cs-ed-dock-body,
+      .cs-ed-tab,
+      .cs-ed-row-item,
+      .cs-ed-zone-add,
+      .cs-ed-grip {
+        transition: none;
+        animation: none;
+      }
+    }
+    .cs-ed-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
     }
     .cs-ed-lib {
       display: flex;
@@ -1787,7 +2066,55 @@ window.__ModuleLoader__.load({
       opacity: 0.55;
       pointer-events: none;
     }
-    .cs-set-open {
+    .cs-ed-newcmp {
+      margin-left: auto;
+      border: 1px solid var(--dsw-alias-border-l2);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--dsw-alias-label-primary);
+      font: inherit;
+      font-size: 12px;
+      padding: 3px 8px;
+      cursor: pointer;
+      transition: background-color .12s ease, border-color .12s ease;
+    }
+    .cs-ed-newcmp:hover {
+      background: var(--dsw-alias-bg-layer-2);
+      border-color: var(--dsw-alias-border-l3);
+    }
+    .cs-ed-cmp {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 10px;
+      background: var(--dsw-alias-bg-layer-1);
+      animation: cs-dock-in .16s ease;
+    }
+    .cs-ed-cmp-preview {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .cs-ed-cmp-stage {
+      min-height: 54px;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px dashed var(--dsw-alias-border-l2);
+      background: var(--dsw-alias-bg-base);
+      overflow: auto;
+    }
+    .cs-ed-cmp-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .cs-ed-libwrap .cs-ed-split-side {
+      flex: 0 0 360px;
+      overflow: auto;
+      padding-left: 14px;
+    }.cs-set-open {
       display: flex;
       flex-direction: column;
       gap: 6px;
@@ -4404,6 +4731,12 @@ window.__ModuleLoader__.load({
       return kind
     }
 
+    /** The alignment names a text block offers. */
+    function alignLabel(t, align) {
+      if (align === 'center') return t('settings.editor.align.center')
+      return t('settings.editor.align.left')
+    }
+
     /** The size names a text block offers. */
     function sizeLabel(t, size) {
       if (size === 'title') return t('settings.editor.block.sizeTitle')
@@ -4840,6 +5173,272 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'cs-ed-side' }, ...rows)
     }
 
+    // ===== views/editor/content.js ===================================
+
+    /**
+     * What the picture holds, listed by zone.
+     *
+     * The dock's first tab answers "what is in the picture, and in which order": the two zones, each with
+     * the blocks it carries, in the order a capture draws them. A row selects its block for the inspector,
+     * and a row's own menu moves the block between zones or drops it. A block cannot be dragged from here —
+     * dragging happens on the picture, where the drop position means something.
+     */
+
+    /** A row's second line: enough of the block to tell two of them apart. */
+    function previewOf(t, block) {
+      if (block.kind === 'text') {
+        const text = String(block.text ?? '').replace(/\s+/g, ' ').trim()
+        if (text === '') return t('settings.editor.content.emptyText')
+        return text.length > 48 ? `${text.slice(0, 48)}...` : text
+      }
+      if (block.kind === 'image') return t('settings.editor.block.image')
+      if (block.kind === 'spacer') return `${block.height} px`
+      if (block.kind === 'divider') return t('settings.editor.block.divider')
+      return t('settings.editor.block.meta')
+    }
+
+    function rowView(props) {
+      const { t, block, selected, onSelect, onMenu } = props
+      return h(
+        'div',
+        {
+          key: block.id,
+          className: selected ? 'cs-ed-row-item is-on' : 'cs-ed-row-item',
+          onClick: () => onSelect(block.id),
+          onContextMenu: (event) => {
+            event.preventDefault()
+            onSelect(block.id)
+            onMenu({ x: event.clientX, y: event.clientY, id: block.id })
+          },
+        },
+        h('span', { className: 'cs-ed-row-kind' }, kindLabel(t, block.kind)),
+        h('span', { className: 'cs-ed-row-text' }, previewOf(t, block)),
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'cs-ed-row-more',
+            title: t('settings.editor.content.more'),
+            onClick: (event) => {
+              event.stopPropagation()
+              const rect = event.currentTarget.getBoundingClientRect()
+              onSelect(block.id)
+              onMenu({ x: Math.round(rect.left), y: Math.round(rect.bottom + 4), id: block.id })
+            },
+          },
+          '...',
+        ),
+      )
+    }
+
+    function contentView(props) {
+      const { t, options, selection, onSelect, onAddZone } = props
+      const zones = [
+        { id: 'top', label: t('settings.editor.zone.top') },
+        { id: 'bottom', label: t('settings.editor.zone.bottom') },
+      ]
+      const selectedId = selection !== null && selection.type === 'block' ? selection.id : null
+      return h(
+        'div',
+        { className: 'cs-ed-zones' },
+        ...zones.map((zone) => {
+          const blocks = options.blocks.filter((block) => block.zone === zone.id)
+          return h(
+            'div',
+            { key: zone.id, className: 'cs-ed-zone' },
+            h(
+              'div',
+              { className: 'cs-ed-zone-head' },
+              h('span', { className: 'cs-ed-zone-name' }, zone.label),
+              h('span', { className: 'cs-ed-zone-count' }, String(blocks.length)),
+              h('button', { type: 'button', className: 'cs-ed-zone-add', onClick: () => onAddZone(zone.id) }, t('settings.editor.content.add')),
+            ),
+            blocks.length === 0
+              ? h('div', { className: 'cs-ed-zone-empty' }, t('settings.editor.content.empty'))
+              : h(
+                  'div',
+                  { className: 'cs-ed-rows' },
+                  ...blocks.map((block) =>
+                    h(rowView, {
+                      key: block.id,
+                      t,
+                      block,
+                      selected: block.id === selectedId,
+                      onSelect,
+                      onMenu: (menu) => props.onRowMenu(menu),
+                    }),
+                  ),
+                ),
+          )
+        }),
+      )
+    }
+
+    // ===== views/editor/components.js ================================
+
+    /**
+     * The component designer. A component is one block plus a name, so anything a block can be a
+     * component can be, and the designer, the library and the finished picture all go through the same
+     * renderer: what the designer shows is the block as the picture will show it.
+     */
+
+    const KINDS = ['text', 'spacer', 'image', 'divider', 'meta']
+    const ALIGNS = ['left', 'center']
+
+    /** Read a file into a data URL, which is the only kind of image a picture can carry. */
+    function readImage(file, done) {
+      const reader = new FileReader()
+      reader.addEventListener('load', () => done(typeof reader.result === 'string' ? reader.result : ''))
+      reader.addEventListener('error', () => done(''))
+      reader.readAsDataURL(file)
+    }
+
+    /**
+     * Build the designer.
+     * @param props - t, Menu, Button, draft ({ id, name, block }), onChange(patch), onSave(),
+     *   onDelete(), onCancel().
+     */
+    function componentEditor(props) {
+      const { t, Menu, Button, draft, onChange, onSave, onDelete, onCancel } = props
+      const previewRef = useRef(null)
+      const block = draft.block
+
+      useEffect(() => {
+        const host = previewRef.current
+        if (host === null || host === undefined) return
+        const doc = host.ownerDocument
+        const drawn = renderBlock(doc, block, tokenValues(doc), null)
+        if (drawn === null) {
+          const note = doc.createElement('div')
+          note.className = 'cs-ed-hintline'
+          note.textContent = t('settings.editor.component.previewEmpty')
+          host.replaceChildren(note)
+          return
+        }
+        host.replaceChildren(drawn)
+      }, [block.kind, block.text, block.size, block.align, block.height, block.width, block.src])
+
+      const setBlock = (patch) => onChange({ block: { ...block, ...patch } })
+
+      const fields = []
+
+      if (block.kind === 'text') {
+        fields.push(
+          h('textarea', {
+            key: 'text',
+            className: 'cs-ed-area',
+            rows: 3,
+            maxLength: BLOCK_TEXT_CHARS,
+            placeholder: t('settings.editor.block.textHint'),
+            value: block.text,
+            onChange: (event) => setBlock({ text: event.target.value }),
+          }),
+          menuRow({
+            key: 'size',
+            Menu,
+            Button,
+            label: t('settings.editor.block.size'),
+            value: block.size,
+            values: TEXT_SIZES,
+            name: (size) => sizeLabel(t, size),
+            onSelect: (size) => setBlock({ size }),
+          }),
+          menuRow({
+            key: 'align',
+            Menu,
+            Button,
+            label: t('settings.editor.block.align'),
+            value: block.align,
+            values: ALIGNS,
+            name: (align) => alignLabel(t, align),
+            onSelect: (align) => setBlock({ align }),
+          }),
+        )
+      }
+
+      if (block.kind === 'spacer') {
+        fields.push(
+          h('input', {
+            key: 'height',
+            className: 'cs-ed-input',
+            type: 'number',
+            min: SPACER_MIN,
+            max: SPACER_MAX,
+            value: block.height,
+            onChange: (event) => setBlock({ height: Number(event.target.value) }),
+          }),
+        )
+      }
+
+      if (block.kind === 'image') {
+        fields.push(
+          h('input', {
+            key: 'file',
+            className: 'cs-ed-file',
+            type: 'file',
+            accept: 'image/*',
+            onChange: (event) => {
+              const file = event.target.files === null ? null : event.target.files[0]
+              if (file === null || file === undefined) return
+              readImage(file, (src) => setBlock({ src }))
+            },
+          }),
+          h('input', {
+            key: 'width',
+            className: 'cs-ed-input',
+            type: 'number',
+            min: IMAGE_WIDTH_MIN,
+            max: IMAGE_WIDTH_MAX,
+            value: block.width,
+            onChange: (event) => setBlock({ width: Number(event.target.value) }),
+          }),
+        )
+      }
+
+      if (block.kind === 'divider' || block.kind === 'meta') {
+        fields.push(h('div', { key: 'note', className: 'cs-ed-hintline' }, kindLabel(t, block.kind)))
+      }
+
+      return h(
+        'div',
+        { className: 'cs-ed-cmp' },
+        h('div', { className: 'cs-ed-panel-head' }, t('settings.editor.component.title')),
+        h(
+          'div',
+          { className: 'cs-ed-row' },
+          h('span', { className: 'cs-ed-label' }, t('settings.editor.component.name')),
+          h('input', {
+            className: 'cs-ed-input',
+            maxLength: 40,
+            placeholder: t('settings.editor.component.namePlaceholder'),
+            value: draft.name,
+            onChange: (event) => onChange({ name: event.target.value }),
+          }),
+        ),
+        menuRow({
+          Menu,
+          Button,
+          label: t('settings.editor.component.kind'),
+          value: block.kind,
+          values: KINDS,
+          name: (kind) => kindLabel(t, kind),
+          onSelect: (kind) => setBlock({ kind }),
+        }),
+        ...fields,
+        h('div', { className: 'cs-ed-cmp-preview' }, h('div', { className: 'cs-ed-panel-head' }, t('settings.editor.component.preview')), h('div', { className: 'cs-ed-cmp-stage', ref: previewRef })),
+        h('div', { className: 'cs-ed-hintline' }, t('settings.editor.component.hint')),
+        h(
+          'div',
+          { className: 'cs-ed-cmp-actions' },
+          h(Button, { variant: 'primary', size: 'sm', disabled: draft.name.trim() === '', onClick: onSave }, t('settings.editor.component.save')),
+          h(Button, { variant: 'ghost', size: 'sm', onClick: onCancel }, t('settings.editor.component.cancel')),
+          draft.id === null
+            ? null
+            : h(Button, { variant: 'ghost', size: 'sm', onClick: onDelete }, t('settings.editor.component.delete')),
+        ),
+      )
+    }
+
     // ===== views/editor/library.js ===================================
 
     /**
@@ -4850,14 +5449,23 @@ window.__ModuleLoader__.load({
     /**
      * Build the palette.
      * @param props - t, options, blockSelection, onAdd(kind, shape), onDropCustom(id), onToken(name),
-     *   onDrag(payload).
+     *   onDrag(payload), onNewComponent(), onEditComponent(id).
      */
     function libraryView(props) {
-      const { t, options, blockSelection, onAdd, onDrag, onToken, onDropCustom } = props
+      const { t, options, blockSelection, onAdd, onDrag, onToken, onDropCustom, onNewComponent, onEditComponent } = props
       const library = h(
         'div',
         { className: 'cs-ed-lib' },
-        h('div', { className: 'cs-ed-lead-row' }, h('span', { className: 'cs-ed-label' }, t('settings.editor.library'))),
+        h(
+          'div',
+          { className: 'cs-ed-lead-row' },
+          h('span', { className: 'cs-ed-label' }, t('settings.editor.library')),
+          h(
+            'button',
+            { type: 'button', className: 'cs-ed-newcmp', onClick: () => onNewComponent() },
+            '+ ' + t('settings.editor.component.new'),
+          ),
+        ),
         h(
           'div',
           { className: 'cs-ed-chips' },
@@ -4928,6 +5536,16 @@ window.__ModuleLoader__.load({
                     {
                       type: 'button',
                       className: 'cs-ed-x',
+                      title: t('settings.editor.component.edit'),
+                      onClick: () => onEditComponent(entry.id),
+                    },
+                    '...',
+                  ),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'cs-ed-x',
                       title: t('settings.editor.block.dropCustom'),
                       onClick: () => onDropCustom(entry.id),
                     },
@@ -4958,6 +5576,69 @@ window.__ModuleLoader__.load({
       )
 
       return library
+    }
+
+    // ===== views/editor/dock.js ======================================
+
+    /**
+     * The dock: tools along the bottom edge of the surface.
+     *
+     * An inspector that takes width takes it away from the copy, and the copy is the thing being judged,
+     * so the tools sit under the picture instead of beside it. The dock carries three tabs — what the
+     * picture holds, what one element of it is, and the shelf new content comes from — and the actions
+     * that apply to the whole surface. Its height belongs to the reader: the strip above it drags, a
+     * double click folds it down to the tab row, and folding is animated so the copy grows back into the
+     * space instead of jumping into it.
+     *
+     * The strip is also the reason there is no action bar floating near the top of the window: a frameless
+     * window draws its own title bar and window buttons above the page, and controls placed under them are
+     * half unclickable. Everything the reader presses lives at the bottom.
+     */
+
+    /** One tab label with the number of things behind it, when that number is worth showing. */
+    function tabButton(tab, current, onTab) {
+      return h(
+        'button',
+        {
+          key: tab.id,
+          type: 'button',
+          role: 'tab',
+          'aria-selected': tab.id === current ? 'true' : 'false',
+          className: tab.id === current ? 'cs-ed-tab is-on' : 'cs-ed-tab',
+          onClick: () => onTab(tab.id),
+        },
+        h('span', { className: 'cs-ed-tab-label' }, tab.label),
+        tab.count > 0 ? h('span', { className: 'cs-ed-tab-count' }, String(tab.count)) : null,
+      )
+    }
+
+    function dockView(props) {
+      const { t, Button, tabs, current, onTab, pick, onPick, onReset, onDone, collapsed, onToggle, body, height, dragging, onResizeStart } = props
+      return h(
+        'div',
+        {
+          className: `cs-ed-dock${collapsed ? ' is-collapsed' : ''}${dragging ? ' is-dragging' : ''}`,
+          style: collapsed ? undefined : { height: `${height}px` },
+        },
+        h(
+          'div',
+          { className: 'cs-ed-resize', title: t('settings.editor.dock.resize'), onPointerDown: onResizeStart, onDoubleClick: onToggle },
+          h('span', { className: 'cs-ed-grip' }),
+        ),
+        h(
+          'div',
+          { className: 'cs-ed-dock-head' },
+          h('div', { className: 'cs-ed-tabs', role: 'tablist' }, ...tabs.map((tab) => tabButton(tab, current, onTab))),
+          h(
+            'div',
+            { className: 'cs-ed-head-actions' },
+            h(Button, { variant: pick ? 'primary' : 'ghost', size: 'sm', onClick: onPick }, t('settings.editor.pick')),
+            h(Button, { variant: 'ghost', size: 'sm', onClick: onReset }, t('settings.reset')),
+            h(Button, { variant: 'primary', size: 'sm', onClick: onDone }, t('settings.editor.done')),
+          ),
+        ),
+        collapsed ? null : h('div', { className: 'cs-ed-dock-body', key: current }, body),
+      )
     }
 
     // ===== views/editor/surface.js ===================================
@@ -5047,12 +5728,19 @@ window.__ModuleLoader__.load({
       const [selection, setSelection] = useState(null)
       const [pick, setPick] = useState(false)
       const [menu, setMenu] = useState(null)
+      const [rowMenu, setRowMenu] = useState(null)
+      const [tab, setTab] = useState('content')
+      const [dockHeight, setDockHeight] = useState(DOCK_HEIGHT)
+      const [dockFolded, setDockFolded] = useState(false)
+      const [dockDragging, setDockDragging] = useState(false)
+      const [addZone, setAddZone] = useState('bottom')
       const [drag, setDrag] = useState(null)
       const [draftProp, setDraftProp] = useState(STYLE_PROPS[0])
       const [draftValue, setDraftValue] = useState('')
       const [draftAttr, setDraftAttr] = useState('')
       const [draftAttrValue, setDraftAttrValue] = useState('')
       const [customName, setCustomName] = useState('')
+      const [draftComponent, setDraftComponent] = useState(null)
 
       pickRef.current = pick
       selectionRef.current = selection
@@ -5122,12 +5810,14 @@ window.__ModuleLoader__.load({
         const chooseBlock = (id) => {
           setSelection({ type: 'block', id })
           setCustomName('')
+          setTab('content')
           return id
         }
 
         const choose = (node) => {
           const selector = elementKey(node, clone)
           setSelection({ type: 'element', selector, tag: node.tagName.toLowerCase(), text: autoName(node) })
+          setTab('element')
           return selector
         }
 
@@ -5406,11 +6096,12 @@ window.__ModuleLoader__.load({
         bump()
       }
 
-      /** Append one block of a kind to the bottom zone, for a click instead of a drag. */
+      /** Append one block of a kind to the zone the reader picked, for a click instead of a drag. */
       const appendBlock = (kind, shape) => {
-        const created = addBlock('bottom', { ...(shape ?? {}), kind, zone: 'bottom' })
+        const created = addBlock(addZone, { ...(shape ?? {}), kind, zone: addZone })
         if (created !== null) {
           setSelection({ type: 'block', id: created.id })
+          setTab('content')
           bump()
         }
       }
@@ -5579,91 +6270,224 @@ window.__ModuleLoader__.load({
           bump()
         },
         onToken: addToken,
+        onNewComponent: () => {
+          setDraftComponent({ id: null, name: '', block: { kind: 'text', text: '', size: 'body', align: 'left' } })
+          setTab('library')
+          setPick(false)
+        },
+        onEditComponent: (id) => {
+          const entry = options.custom.find((item) => item.id === id)
+          if (entry === undefined) return
+          setDraftComponent({ id: entry.id, name: entry.name, block: { ...entry.block } })
+          setTab('library')
+        },
         onDrag: (payload) => {
           writeDrag(payload)
           setDrag(null)
         },
       })
 
+      const composer = h(componentEditor, {
+        t,
+        Menu,
+        Button,
+        draft: draftComponent,
+        onChange: (patch) => setDraftComponent((current) => ({ ...current, ...patch })),
+        onSave: () => {
+          const stored = storeCustom(draftComponent.id, draftComponent.name, draftComponent.block)
+          if (stored === null) return
+          setDraftComponent(null)
+          bump()
+        },
+        onDelete: () => {
+          if (draftComponent.id !== null) dropCustom(draftComponent.id)
+          setDraftComponent(null)
+          bump()
+        },
+        onCancel: () => setDraftComponent(null),
+      })
+
+      const tabs = [
+        { id: 'content', label: t('settings.editor.tab.content'), count: options.blocks.length },
+        { id: 'element', label: t('settings.editor.tab.element'), count: hiddenEntries.length },
+        { id: 'library', label: t('settings.editor.tab.library'), count: 0 },
+      ]
+
+      const hiddenSection = h(
+        'div',
+        { className: 'cs-ed-hidden' },
+        h('div', { className: 'cs-ed-panel-head' }, t('settings.editor.hidden')),
+        hiddenEntries.length === 0
+          ? h('div', { className: 'cs-ed-hintline' }, t('settings.editor.hiddenEmpty'))
+          : h(
+              'div',
+              { className: 'cs-ed-chips' },
+              ...hiddenEntries.map((entry) =>
+                h(
+                  'button',
+                  {
+                    key: entry.kind + ':' + entry.id,
+                    type: 'button',
+                    className: 'cs-ed-chip',
+                    title: t('settings.editor.hiddenHint'),
+                    onClick: () => peek(entry),
+                    onDoubleClick: () => restore(entry),
+                  },
+                  h('span', { className: 'cs-ed-chip-part' }, entryLabel(t, entry)),
+                  entry.kind === 'rule' && (entry.elements ?? []).length > 1
+                    ? h('span', { className: 'cs-ed-chip-count' }, String(entry.elements.length))
+                    : null,
+                ),
+              ),
+            ),
+      )
+
+      const contentBody = h(
+        'div',
+        { className: 'cs-ed-split' },
+        h(
+          'div',
+          { className: 'cs-ed-split-main' },
+          h(contentView, {
+            t,
+            options,
+            selection,
+            onSelect: (id) => {
+              setSelection({ type: 'block', id })
+              setCustomName('')
+            },
+            onAddZone: (zone) => {
+              setAddZone(zone)
+              setTab('library')
+              setPick(false)
+            },
+            onRowMenu: (next) => setRowMenu(next),
+          }),
+        ),
+        h(
+          'div',
+          { className: 'cs-ed-split-side' },
+          blockSelection !== null
+            ? h('div', { className: 'cs-ed-panel' }, h('div', { className: 'cs-ed-panel-head' }, kindLabel(t, blockSelection.kind)), inspector)
+            : h('div', { className: 'cs-ed-empty-note' }, t('settings.editor.content.pickBlock')),
+        ),
+      )
+
+      const elementBody = h(
+        'div',
+        { className: 'cs-ed-split' },
+        h('div', { className: 'cs-ed-split-side is-narrow' }, hiddenSection),
+        h(
+          'div',
+          { className: 'cs-ed-split-main' },
+          elementSelection !== null
+            ? h('div', { className: 'cs-ed-panel' }, h('div', { className: 'cs-ed-panel-head' }, elementSelection.tag), inspector)
+            : h('div', { className: 'cs-ed-empty-note' }, t('settings.editor.side.none')),
+        ),
+      )
+
+      const libraryBody = h(
+        'div',
+        { className: 'cs-ed-libwrap' },
+        h('div', { className: 'cs-ed-split' }, h('div', { className: 'cs-ed-split-main' }, library), h('div', { className: 'cs-ed-split-side' }, draftComponent === null ? h('div', { className: 'cs-ed-empty-note' }, t('settings.editor.component.empty')) : composer)),
+      )
+
+      const body = tab === 'library' ? libraryBody : tab === 'element' ? elementBody : contentBody
+
+      const rowMenuItems =
+        rowMenu === null
+          ? []
+          : [
+              { id: 'rowTop', label: t('settings.editor.block.toTop') },
+              { id: 'rowBottom', label: t('settings.editor.block.toBottom') },
+              { type: 'separator' },
+              { id: 'rowDelete', label: t('settings.editor.block.delete'), danger: true },
+            ]
+
+      const onRowMenu = (id) => {
+        const current = rowMenu
+        setRowMenu(null)
+        if (current === null) return
+        if (id === 'rowDelete') {
+          removeBlock(current.id)
+          setSelection(null)
+          bump()
+          return
+        }
+        if (id === 'rowTop') {
+          moveBlock(current.id, 'top', 99)
+          bump()
+          return
+        }
+        if (id === 'rowBottom') {
+          moveBlock(current.id, 'bottom', 99)
+          bump()
+        }
+      }
+
+      const onResizeStart = (event) => {
+        if (typeof event.button === 'number' && event.button !== 0) return
+        event.preventDefault()
+        const startY = event.clientY
+        const startHeight = dockFolded ? DOCK_MIN : dockHeight
+        const limit = Math.max(DOCK_MIN, Math.round((pane === null ? 600 : pane.height) * DOCK_RATIO))
+        setDockDragging(true)
+        setDockFolded(false)
+        const move = (moveEvent) => {
+          const next = startHeight + (startY - moveEvent.clientY)
+          setDockHeight(Math.max(DOCK_MIN, Math.min(limit, next)))
+        }
+        const stop = () => {
+          setDockDragging(false)
+          window.removeEventListener('pointermove', move)
+          window.removeEventListener('pointerup', stop)
+        }
+        window.addEventListener('pointermove', move)
+        window.addEventListener('pointerup', stop)
+      }
+
+      const toggleDock = () => setDockFolded((value) => value !== true)
+
       return h(
         'div',
-        { className: 'cs-ed-wrap', style: pane === null ? undefined : { left: `${pane.left}px`, top: `${pane.top}px`, width: `${pane.width}px`, height: `${pane.height}px` } },
-        h(
-          'div',
-          { className: 'cs-ed-bar' },
-          h(
-            'div',
-            { className: 'cs-ed-lead' },
-            h('div', { className: 'cs-ed-title' }, t('settings.title')),
-            h('div', { className: 'cs-ed-hint' }, t('settings.editor.hint')),
-          ),
-          h(
-            'div',
-            { className: 'cs-ed-actions' },
-            h(
-              Button,
-              {
-                variant: pick ? 'primary' : 'outline',
-                size: 'sm',
-                onClick: () => {
-                  const next = pick !== true
-                  setPick(next)
-                  if (next) setSelection(null)
-                },
-              },
-              t('settings.editor.pick'),
-            ),
-            h(
-              Button,
-              {
-                variant: 'ghost',
-                size: 'sm',
-                onClick: () => {
-                  resetOptions()
-                  setSelection(null)
-                  bump()
-                },
-              },
-              t('settings.reset'),
-            ),
-            h(Button, { variant: 'primary', size: 'sm', onClick: onClose }, t('settings.editor.done')),
-          ),
-        ),
+        {
+          className: pick ? 'cs-ed-wrap is-pick' : 'cs-ed-wrap',
+          style:
+            pane === null
+              ? undefined
+              : { left: pane.left + 'px', top: pane.top + 'px', width: pane.width + 'px', height: pane.height + 'px' },
+        },
         missing ? h('div', { className: 'cs-ed-empty' }, t('settings.editor.noConversation')) : null,
-        h('div', { className: 'cs-ed-host', ref: hostRef, onDragOver: onDragOver, onDragLeave: onDragLeave, onDrop: onDrop }),
-        drag === null ? null : h('div', { className: 'cs-ed-drop', style: { top: `${drag.y}px` } }),
-        h(
-          'div',
-          { className: 'cs-ed-tray' },
-          h(
-            'div',
-            { className: 'cs-ed-hidden' },
-            h('span', { className: 'cs-ed-label' }, t('settings.editor.hidden')),
-            hiddenEntries.length === 0
-              ? h('span', { className: 'cs-ed-hintline' }, t('settings.editor.hiddenEmpty'))
-              : h(
-                  'span',
-                  { className: 'cs-ed-chips' },
-                  ...hiddenEntries.map((entry) =>
-                    h(
-                      'span',
-                      {
-                        key: `${entry.kind}:${entry.id}`,
-                        className: 'cs-ed-chip',
-                        title: t('settings.editor.hiddenHint'),
-                        onClick: () => peek(entry),
-                        onDoubleClick: () => restore(entry),
-                      },
-                      h('span', { className: 'cs-ed-chip-part' }, entryLabel(t, entry)),
-                      entry.kind === 'rule' && (entry.elements ?? []).length > 1
-                        ? h('span', { className: 'cs-ed-chip-count' }, String(entry.elements.length))
-                        : null,
-                    ),
-                  ),
-                ),
-          ),
-          h('div', { className: 'cs-ed-cols' }, h('div', { className: 'cs-ed-pane' }, inspector), h('div', { className: 'cs-ed-pane' }, library)),
-        ),
+        h('div', { className: 'cs-ed-canvas' }, h('div', { className: 'cs-ed-host', ref: hostRef, onDragOver: onDragOver, onDragLeave: onDragLeave, onDrop: onDrop })),
+        drag === null ? null : h('div', { className: 'cs-ed-drop', style: { top: drag.y + 'px' } }),
+        h(dockView, {
+          t,
+          Button,
+          tabs,
+          current: tab,
+          onTab: (id) => {
+            setTab(id)
+            setRowMenu(null)
+          },
+          pick,
+          onPick: () => {
+            const next = pick !== true
+            setPick(next)
+            if (next) setSelection(null)
+          },
+          onReset: () => {
+            resetOptions()
+            setSelection(null)
+            bump()
+          },
+          onDone: onClose,
+          collapsed: dockFolded,
+          onToggle: toggleDock,
+          body,
+          height: dockHeight,
+          dragging: dockDragging,
+          onResizeStart,
+        }),
         h(Menu, {
           open: menu !== null,
           anchorPoint: menu === null ? undefined : { x: menu.x, y: menu.y },
@@ -5673,6 +6497,16 @@ window.__ModuleLoader__.load({
           selectedIds: [],
           onSelect: onMenu,
           onClose: () => setMenu(null),
+        }),
+        h(Menu, {
+          open: rowMenu !== null,
+          anchorPoint: rowMenu === null ? undefined : { x: rowMenu.x, y: rowMenu.y },
+          align: 'start',
+          portal: true,
+          items: rowMenuItems,
+          selectedIds: [],
+          onSelect: onRowMenu,
+          onClose: () => setRowMenu(null),
         }),
       )
 

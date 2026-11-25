@@ -193,89 +193,304 @@ export const STYLES = String.raw`
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* A frameless window can hand the page a viewport that starts under its own title bar;
-     the inset keeps the bar and the buttons clear of it. */
-  padding: max(10px, env(safe-area-inset-top)) 0 0;
+  /* The overlay covers the conversation itself; a frameless window paints its title bar over the
+     page, so nothing interactive may sit at the very top of the screen. */
+  -webkit-app-region: no-drag;
   background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);
 }
-.cs-ed-bar {
+.cs-ed-canvas {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  background: var(--dsw-alias-bg-base);
+}
+.cs-ed-host {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.cs-ed-dock {
   display: flex;
   flex: none;
-  flex-wrap: wrap;
-  gap: 16px;
-  row-gap: 10px;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-layer-1);
-}
-.cs-ed-lead {
-  display: flex;
-  flex: 1 1 320px;
   flex-direction: column;
-  gap: 4px;
+  min-height: 0;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, .08);
+  transition: height .18s ease;
+}
+.cs-ed-dock.is-collapsed {
+  height: auto;
+}
+.cs-ed-resize {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.cs-ed-grip {
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--dsw-alias-border-l2);
+  transition: width .16s ease, background .16s ease;
+}
+.cs-ed-resize:hover .cs-ed-grip,
+.cs-ed-dock.is-dragging .cs-ed-grip {
+  width: 60px;
+  background: var(--dsw-alias-brand-primary);
+}
+.cs-ed-dock-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px 8px;
+}
+.cs-ed-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   min-width: 0;
 }
-.cs-ed-title {
-  font-size: 14px;
+.cs-ed-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease;
+}
+.cs-ed-tab:hover {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+}
+.cs-ed-tab.is-on {
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-alias-label-primary);
   font-weight: 600;
 }
-.cs-ed-hint {
-  max-width: min(70ch, 100%);
+.cs-ed-tab-count {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
 }
-.cs-ed-actions {
+.cs-ed-head-actions {
   display: flex;
-  flex: none;
   gap: 8px;
   align-items: center;
   margin-left: auto;
 }
-.cs-ed-body {
+.cs-ed-dock-body {
   display: flex;
   flex: 1;
   min-height: 0;
-}
-.cs-ed-host {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-}
-.cs-ed-tray {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  max-height: 42%;
-  min-height: 132px;
   overflow: hidden;
-  border-top: 1px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-layer-1);
+  animation: cs-dock-in .16s ease;
 }
-.cs-ed-cols {
+@keyframes cs-dock-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.cs-ed-split {
   display: flex;
   flex: 1;
+  min-width: 0;
   min-height: 0;
-  gap: 0;
 }
-.cs-ed-pane {
+.cs-ed-split-main {
   display: flex;
   flex: 1;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  gap: 10px;
   overflow: auto;
-  padding: 12px 16px 16px;
+  padding: 4px 16px 14px;
+}
+.cs-ed-split-side {
+  display: flex;
+  flex: 0 0 320px;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  padding: 4px 16px 14px;
+  border-left: 1px solid var(--dsw-alias-border-l1);
   font-size: 12px;
 }
-.cs-ed-pane + .cs-ed-pane {
-  flex: 0 0 300px;
-  border-left: 1px solid var(--dsw-alias-border-l1);
+.cs-ed-split-side.is-narrow {
+  flex: 0 0 260px;
+}
+.cs-ed-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cs-ed-panel-head {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.cs-ed-empty-note {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.cs-ed-hintline {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+.cs-ed-libwrap {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.cs-ed-zones {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cs-ed-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cs-ed-zone-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cs-ed-zone-name {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.cs-ed-zone-count {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+.cs-ed-zone-add {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px dashed var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color .14s ease, color .14s ease;
+}
+.cs-ed-zone-add:hover {
+  border-color: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-brand-primary);
+}
+.cs-ed-zone-empty {
+  padding: 10px 12px;
+  border: 1px dashed var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.cs-ed-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cs-ed-row-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background .14s ease, border-color .14s ease;
+}
+.cs-ed-row-item:hover {
+  background: var(--dsw-alias-bg-layer-3);
+}
+.cs-ed-row-item.is-on {
+  border-color: var(--dsw-alias-brand-primary);
+  background: var(--dsw-alias-bg-layer-3);
+}
+.cs-ed-row-kind {
+  flex: none;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+}
+.cs-ed-row-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-ed-row-more {
+  flex: none;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.cs-ed-row-more:hover {
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-ed-dock,
+  .cs-ed-dock-body,
+  .cs-ed-tab,
+  .cs-ed-row-item,
+  .cs-ed-zone-add,
+  .cs-ed-grip {
+    transition: none;
+    animation: none;
+  }
+}
+.cs-ed-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 .cs-ed-lib {
   display: flex;
@@ -608,7 +823,55 @@ export const STYLES = String.raw`
   opacity: 0.55;
   pointer-events: none;
 }
-.cs-set-open {
+.cs-ed-newcmp {
+  margin-left: auto;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background-color .12s ease, border-color .12s ease;
+}
+.cs-ed-newcmp:hover {
+  background: var(--dsw-alias-bg-layer-2);
+  border-color: var(--dsw-alias-border-l3);
+}
+.cs-ed-cmp {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+  animation: cs-dock-in .16s ease;
+}
+.cs-ed-cmp-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cs-ed-cmp-stage {
+  min-height: 54px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px dashed var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-base);
+  overflow: auto;
+}
+.cs-ed-cmp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.cs-ed-libwrap .cs-ed-split-side {
+  flex: 0 0 360px;
+  overflow: auto;
+  padding-left: 14px;
+}.cs-set-open {
   display: flex;
   flex-direction: column;
   gap: 6px;

@@ -53,6 +53,12 @@ export function kindLabel(t, kind) {
   return kind
 }
 
+/** The alignment names a text block offers. */
+export function alignLabel(t, align) {
+  if (align === 'center') return t('settings.editor.align.center')
+  return t('settings.editor.align.left')
+}
+
 /** The size names a text block offers. */
 export function sizeLabel(t, size) {
   if (size === 'title') return t('settings.editor.block.sizeTitle')
