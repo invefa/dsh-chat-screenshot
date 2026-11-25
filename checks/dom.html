@@ -50,7 +50,8 @@
       import { readPaging, classifyPaging, hasOlderPages, findLoadOlder } from '../src/client/dom/paging.js'
       import { applyRules, autoName, elementKey } from '../src/client/dom/rules.js'
       import { buildStage } from '../src/client/dom/stage.js'
-      import { insertBlocks, insertMeta, fillTokens } from '../src/client/dom/inserts.js'
+      import { insertBlocks } from '../src/client/dom/inserts.js'
+      import { renderTemplate, tokenValues } from '../src/client/dom/tokens.js'
       import { planCrop } from '../src/client/dom/band.js'
       import { normalizeOptions } from '../src/client/shell/options.js'
       import { turnList, pruneTurns } from '../src/client/dom/turn.js'
@@ -193,10 +194,17 @@
       silent.remove()
 
       // --- the edit surface, built in the conversation's place --------------------------------------
-      const stage = buildStage(scroller.querySelector('[data-chat-turn]'), normalizeOptions({}), {
-        title: '标题',
-        subtitle: '副标题',
-        footer: '页脚',
+      const stageOptions = normalizeOptions({
+        blocks: [
+          { kind: 'text', zone: 'top', text: '' },
+          { kind: 'text', zone: 'top', text: '副标题', size: 'subtitle' },
+          { kind: 'text', zone: 'bottom', text: '页脚' },
+        ],
+      })
+      const stage = buildStage(scroller.querySelector('[data-chat-turn]'), stageOptions, {
+        text: '在这里输入',
+        image: '添加图片',
+        zone: '放在这里',
       })
       document.body.appendChild(stage.element)
       const fields = stage.head === null ? [] : Array.from(stage.head.querySelectorAll('[data-dsh-screenshot-field]'))
@@ -236,18 +244,32 @@
       document.body.appendChild(holder)
 
       const clone = scroller.cloneNode(true)
-      const options = normalizeOptions({ title: '标题 {turns}', footer: '页脚', align: 'center', showMeta: true })
+      const options = normalizeOptions({
+        blocks: [
+          { kind: 'text', zone: 'top', text: '标题 {turns}' },
+          { kind: 'divider', zone: 'top' },
+          { kind: 'meta', zone: 'bottom' },
+        ],
+        align: 'center',
+      })
       applyRules(clone, options)
       clone.style.height = 'auto'
       clone.style.overflow = 'visible'
       holder.appendChild(clone)
-      const blocks = insertBlocks(clone, options, insertMeta(new Date(2026, 10, 25, 9, 5), 2))
+      const values = { ...tokenValues(document), turns: '2', date: '2026-11-25', time: '09:05' }
+      const blocks = insertBlocks(clone, options, values)
       const names = Array.from(clone.children).map((el) => el.tagName + (el.getAttribute('data-dsh-screenshot-head') ? ':head' : el.getAttribute('data-dsh-screenshot-foot') ? ':foot' : ''))
       check('the header is the first block', clone.firstElementChild === blocks.head, names.join(' '))
       check('the footer is the last block', clone.lastElementChild === blocks.foot, names.join(' '))
       check('the header fills the reader\'s placeholders', blocks.head?.textContent.includes('标题 2') === true, blocks.head?.textContent ?? 'null')
       check('the meta line follows the text', blocks.foot?.textContent.includes('2 轮对话') === true, blocks.foot?.textContent ?? 'null')
-      check('an unknown token survives', fillTokens('{nope}', insertMeta(new Date(), 0)) === '{nope}', 'eaten')
+      check('an unknown token survives', renderTemplate('{nope}', values) === '{nope}', 'eaten')
+      const drawn = Array.from(clone.querySelectorAll('[data-dsh-screenshot-block]')).map((el) => el.className)
+      check(
+        'every block is tagged with the id it came from',
+        drawn.length === 3 && options.blocks.every((block) => clone.querySelector(`[data-dsh-screenshot-block="${block.id}"]`) !== null),
+        drawn.join(' '),
+      )
 
       // The crop has to start above the first turn when a header was added, and reach past the footer.
       const box = clone.getBoundingClientRect()

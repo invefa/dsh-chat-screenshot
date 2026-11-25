@@ -10,16 +10,27 @@
 
 import {
   ALIGN_CHOICES,
+  BLOCK_KINDS,
+  BLOCK_NAME_CHARS,
+  BLOCK_TEXT_CHARS,
+  BLOCK_ZONES,
   EDGE_CHOICES,
   EDGE_PADDING,
-  INSERT_MAX_CHARS,
+  IMAGE_MAX_CHARS,
+  IMAGE_WIDTH_MAX,
+  IMAGE_WIDTH_MIN,
+  MAX_BLOCKS,
+  MAX_CUSTOM,
   MAX_RULES,
   RULE_ATTR_CHARS,
   RULE_NAME_CHARS,
   RULE_SELECTOR_CHARS,
   RULE_VALUE_CHARS,
   SCALE_CHOICES,
+  SPACER_MAX,
+  SPACER_MIN,
   STYLE_PROPS,
+  TEXT_SIZES,
 } from './const.js'
 import { react } from './runtime.js'
 /** Storage key owned by this plugin. */
@@ -44,14 +55,7 @@ export const HIDE_FLAGS = [
   'hideComposer',
 ]
 
-/** The free-text blocks the picture can carry, with the length each one is capped at. */
-export const TEXT_FIELDS = [
-  ['title', INSERT_MAX_CHARS.title],
-  ['subtitle', INSERT_MAX_CHARS.subtitle],
-  ['footer', INSERT_MAX_CHARS.footer],
-]
-
-/** What a capture shows when the reader has never opened the settings page. */
+/** What a capture shows when the reader has never opened the editor. */
 export const OPTION_DEFAULTS = Object.freeze({
   hideClock: true,
   hideProcess: false,
@@ -61,11 +65,8 @@ export const OPTION_DEFAULTS = Object.freeze({
   hideToBottom: true,
   hidePaging: true,
   hideComposer: true,
-  title: '',
-  subtitle: '',
-  footer: '',
-  showMeta: false,
-  divider: true,
+  blocks: [],
+  custom: [],
   align: 'left',
   edge: EDGE_PADDING,
   scale: 'auto',
@@ -84,6 +85,14 @@ export function ruleId(selector) {
     hash = (hash * 31 + selector.charCodeAt(index)) | 0
   }
   return `r${(hash >>> 0).toString(36)}`
+}
+
+let blockCounter = 0
+
+/** A fresh id for one block. Blocks are placed, reordered and removed, so they cannot key on content. */
+export function newBlockId() {
+  blockCounter += 1
+  return `b${Date.now().toString(36)}${blockCounter.toString(36)}`
 }
 
 /** One style map, keeping only the offered properties and only non-empty values. */
@@ -142,6 +151,141 @@ export function normalizeRules(raw) {
   return Array.from(byId.values()).slice(0, MAX_RULES)
 }
 
+/** One number inside a range, or the fallback. */
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return fallback
+  return Math.min(max, Math.max(min, Math.round(number)))
+}
+
+/** A zone name, or the fallback. */
+function zoneOf(value) {
+  return BLOCK_ZONES.includes(value) ? value : 'top'
+}
+
+/** A text size, or `body`. */
+function sizeOf(value) {
+  return TEXT_SIZES.includes(value) ? value : 'body'
+}
+
+/** An alignment, or the fallback. */
+function alignOf(value, fallback) {
+  return ALIGN_CHOICES.includes(value) ? value : fallback
+}
+
+/**
+ * The content of a block, without the fields its kind does not use.
+ *
+ * Keeping one shape per kind means the capture, the editor and a saved component all read the same
+ * three or four fields, and a hand-edited store cannot smuggle a font size into a divider.
+ */
+function normalizeContent(kind, raw, align) {
+  if (kind === 'text') {
+    const text =
+      typeof raw.text === 'string'
+        ? raw.text
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim()
+            .slice(0, BLOCK_TEXT_CHARS)
+        : ''
+    return { text, size: sizeOf(raw.size), align: alignOf(raw.align, align) }
+  }
+  if (kind === 'spacer') return { height: clampNumber(raw.height, SPACER_MIN, SPACER_MAX, 24) }
+  if (kind === 'image') {
+    const src = typeof raw.src === 'string' && raw.src.startsWith('data:image/') ? raw.src : ''
+    return {
+      src: src.length <= IMAGE_MAX_CHARS ? src : '',
+      width: clampNumber(raw.width, IMAGE_WIDTH_MIN, IMAGE_WIDTH_MAX, 100),
+    }
+  }
+  return {}
+}
+
+/** Clamp one stored block onto the shape the capture understands. */
+export function normalizeBlock(raw, fallbackAlign = 'left') {
+  if (raw === null || typeof raw !== 'object') return null
+  // A block whose kind this version does not know is dropped rather than turned into something the
+  // user never asked for: an unknown kind is data from a newer version, not a text block.
+  if (!BLOCK_KINDS.includes(raw.kind)) return null
+  const kind = raw.kind
+  const content = normalizeContent(kind, raw, fallbackAlign)
+  // An image with no usable bytes would paint an empty box, so it never becomes a block.
+  if (kind === 'image' && content.src === '') return null
+  const id = typeof raw.id === 'string' && raw.id !== '' ? raw.id.slice(0, 40) : newBlockId()
+  return {
+    id,
+    kind,
+    zone: zoneOf(raw.zone),
+    ...content,
+  }
+}
+
+/** Every stored block, in the order it was placed, capped. */
+export function normalizeBlocks(raw, align = 'left') {
+  if (!Array.isArray(raw)) return []
+  const blocks = []
+  for (const entry of raw) {
+    const block = normalizeBlock(entry, align)
+    if (block === null) continue
+    blocks.push(block)
+    if (blocks.length >= MAX_BLOCKS) break
+  }
+  return blocks
+}
+
+/** One saved component: a named block shape the palette can drop again. */
+export function normalizeCustom(raw) {
+  if (raw === null || typeof raw !== 'object') return null
+  const source = raw.block !== null && typeof raw.block === 'object' ? raw.block : raw
+  const kind = BLOCK_KINDS.includes(source.kind) ? source.kind : 'text'
+  const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, BLOCK_NAME_CHARS) : ''
+  if (name === '') return null
+  return {
+    id: typeof raw.id === 'string' && raw.id !== '' ? raw.id.slice(0, 40) : newBlockId(),
+    name,
+    block: { kind, ...normalizeContent(kind, source, 'left') },
+  }
+}
+
+/** Every saved component, deduplicated by id and capped. */
+export function normalizeCustoms(raw) {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set()
+  const list = []
+  for (const entry of raw) {
+    const custom = normalizeCustom(entry)
+    if (custom === null || seen.has(custom.id)) continue
+    seen.add(custom.id)
+    list.push(custom)
+    if (list.length >= MAX_CUSTOM) break
+  }
+  return list
+}
+
+/**
+ * The settings of the build before blocks existed, read as blocks.
+ *
+ * Anyone who had already filled in a title, a subtitle or a footer keeps exactly the picture they
+ * had: those three become text blocks in the zone they used to occupy, the divider and the date line
+ * become blocks too, and the fields themselves stop being read once `blocks` exists.
+ */
+function legacyBlocks(source) {
+  const align = alignOf(source.align, 'left')
+  const text = (value, limit) =>
+    typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, limit) : ''
+  const title = text(source.title, 120)
+  const subtitle = text(source.subtitle, 160)
+  const footer = text(source.footer, 200)
+  const blocks = []
+  if (title !== '') blocks.push({ kind: 'text', zone: 'top', text: title, size: 'title', align })
+  if (subtitle !== '') blocks.push({ kind: 'text', zone: 'top', text: subtitle, size: 'subtitle', align })
+  if (source.divider === true) blocks.push({ kind: 'divider', zone: 'top' })
+  if (footer !== '') blocks.push({ kind: 'text', zone: 'bottom', text: footer, size: 'body', align })
+  if (source.showMeta === true) blocks.push({ kind: 'meta', zone: 'bottom' })
+  return blocks
+}
+
 /** The nearest offered preset, so a stored value outside the list still lands on a real one. */
 function nearestEdge(value) {
   const number = Number(value)
@@ -158,22 +302,18 @@ export function normalizeOptions(raw) {
   for (const flag of HIDE_FLAGS) {
     if (typeof source[flag] === 'boolean') next[flag] = source[flag]
   }
-  for (const [field, limit] of TEXT_FIELDS) {
-    const value = source[field]
-    if (typeof value === 'string') next[field] = value.replace(/\s+/g, ' ').trim().slice(0, limit)
-  }
-  if (typeof source.showMeta === 'boolean') next.showMeta = source.showMeta
-  if (typeof source.divider === 'boolean') next.divider = source.divider
-  if (ALIGN_CHOICES.includes(source.align)) next.align = source.align
-  if (SCALE_CHOICES.includes(source.scale)) next.scale = source.scale
+  next.align = alignOf(source.align, next.align)
+  next.scale = SCALE_CHOICES.includes(source.scale) ? source.scale : next.scale
   next.edge = nearestEdge(source.edge)
+  next.blocks = normalizeBlocks(Array.isArray(source.blocks) ? source.blocks : legacyBlocks(source), next.align)
+  next.custom = normalizeCustoms(source.custom)
   next.rules = normalizeRules(source.rules)
   return next
 }
 
 /** Whether the chosen options put anything above or below the transcript. */
 export function hasInserts(options) {
-  return options.title !== '' || options.subtitle !== '' || options.footer !== '' || options.showMeta
+  return Array.isArray(options.blocks) && options.blocks.length > 0
 }
 
 /** The page's storage, or null when the browser refuses it (private mode, disabled storage). */
@@ -282,6 +422,89 @@ export function saveRule(selector, patch) {
 export function dropRule(selector) {
   const current = readOptions()
   writeOptions({ rules: current.rules.filter((rule) => rule.selector !== selector) })
+}
+
+/** The block with one id, or null. */
+export function blockFor(options, id) {
+  return options.blocks.find((block) => block.id === id) ?? null
+}
+
+/** Insert one block, at an index inside its zone (the end when the index is out of range). */
+export function addBlock(zone, block, index = -1) {
+  const current = readOptions()
+  const stored = normalizeBlock({ ...block, zone: zoneOf(zone) }, current.align)
+  if (stored === null) return null
+  const blocks = [...current.blocks]
+  const bounds = zoneBounds(blocks, stored.zone)
+  const at = index < 0 || index > bounds.count ? zoneStart(blocks, stored.zone) + bounds.count : zoneStart(blocks, stored.zone) + index
+  blocks.splice(at, 0, stored)
+  writeOptions({ blocks })
+  return stored
+}
+
+/** Change the fields of one block. */
+export function updateBlock(id, patch) {
+  const current = readOptions()
+  const existing = blockFor(current, id)
+  if (existing === null) return null
+  const saved = normalizeBlock({ ...existing, ...patch, id }, current.align)
+  if (saved === null) return null
+  writeOptions({ blocks: current.blocks.map((block) => (block.id === id ? saved : block)) })
+  return saved
+}
+
+/** Remove one block. */
+export function removeBlock(id) {
+  const current = readOptions()
+  writeOptions({ blocks: current.blocks.filter((block) => block.id !== id) })
+}
+
+/** The index of the first block of one zone; blocks of a zone are kept contiguous. */
+function zoneStart(blocks, zone) {
+  const index = blocks.findIndex((block) => block.zone === zone)
+  if (index >= 0) return index
+  return zone === 'top' ? 0 : blocks.length
+}
+
+/** How many blocks one zone holds. */
+function zoneBounds(blocks, zone) {
+  return { start: zoneStart(blocks, zone), count: blocks.filter((block) => block.zone === zone).length }
+}
+
+/**
+ * Move one block to another place.
+ *
+ * Zones stay contiguous, so a block dropped between two blocks of the other zone lands at the edge of
+ * the zone it was dropped into rather than splitting the other one.
+ */
+export function moveBlock(id, zone, index) {
+  const current = readOptions()
+  const existing = blockFor(current, id)
+  if (existing === null) return null
+  const rest = current.blocks.filter((block) => block.id !== id)
+  const moved = { ...existing, zone: zoneOf(zone) }
+  const bounds = zoneBounds(rest, moved.zone)
+  const at = Math.min(bounds.start + Math.max(0, index), bounds.start + bounds.count)
+  const blocks = [...rest.slice(0, at), moved, ...rest.slice(at)]
+  writeOptions({ blocks })
+  return moved
+}
+
+/** Save the shape of one block as a component the palette can drop again. */
+export function saveCustom(name, block) {
+  const label = typeof name === 'string' ? name.trim().slice(0, BLOCK_NAME_CHARS) : ''
+  if (label === '' || block === null || typeof block !== 'object') return null
+  const current = readOptions()
+  const custom = normalizeCustom({ name: label, block })
+  if (custom === null) return null
+  writeOptions({ custom: [custom, ...current.custom] })
+  return custom
+}
+
+/** Forget one saved component. */
+export function dropCustom(id) {
+  const current = readOptions()
+  writeOptions({ custom: current.custom.filter((entry) => entry.id !== id) })
 }
 
 /** The options in a component, re-rendered on every change. */

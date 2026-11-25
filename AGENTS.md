@@ -101,6 +101,28 @@ Documentation is English with a `.zh-CN.md` edition.
   system hands every package; a hand-rolled menu would lose the theme, the focus trap and the keyboard
   handling the surrounding UI already has. `native` may be undefined in a build that ships no seed, so
   every use falls back to render nothing rather than to throw.
+- The tools live in a tray along the bottom of the editor, not in a side column. A side column takes
+  width away from the copy, and the copy is the thing being judged; the tray carries the hidden list,
+  the inspector and the library, and the preview keeps the full width of the conversation.
+- The added content is a list of blocks, not a fixed header and footer. A block is
+  `{ id, kind, zone, ... }` with `kind` in text / spacer / image / divider / meta and `zone` in top /
+  bottom, so the two fixed fields that used to be here are two ordinary blocks; the library appends or
+  drags one in, and a block already in the picture is dragged to move it, both zones included.
+- Text in a block is a template. `dom/tokens.js` reads the conversation and the host for
+  `{turns}` `{prompts}` `{date}` `{time}` `{weekday}` `{title}` `{model}` `{session}` `{app}`
+  `{version}`, and only those are replaced, at capture time; unknown braces survive, and the editor
+  shows the placeholders because it renders with the raw values.
+- An image block holds a data URL and nothing else. A picked file is read in the page, so the picture
+  never needs a network round trip and nothing is uploaded; anything past the size cap is refused at
+  normalize time rather than stored and silently dropped later.
+- A saved component is a block with a name. Saving a block copies it into `custom`, and the library
+  appends a fresh copy with a new id; components are not a second rendering path, so a change to how a
+  block is drawn reaches the presets and the saved components at once.
+- A view function is called through `h(component, props)`, never as `component(props)`. React keeps
+  hooks in call order, so calling a component as a plain function puts its `useState` into the parent's
+  list and the tree comes down when the order changes; the surface is wrapped in an error boundary for
+  the same reason — one bad render should print what broke over the conversation instead of leaving a
+  blank screen.
 - The editor shows the band a capture would keep, not the page: the copy is measured after it is
   mounted (`stage.frame()`), because a detached subtree has no boxes and would collapse the frame, and
   it is rebuilt when the window resizes or zooms, because the width of the copy is the conversation's
@@ -137,7 +159,7 @@ None of them can tell whether the picture looks right: for that, load the page, 
 paste the result.
 
 `apply` publishes `window.__chatScreenshot`, removed when the plugin unloads. It carries
-`captureConversation(anchor)`, `captureTurn(tail)` and `translate(key, vars)`. The handle exists so a
+`captureConversation(anchor)`, `captureTurn(tail)`, `openEditor()` and `translate(key, vars)`. The handle exists so a
 capture path can be tried in a sandbox page without a rendered action row: `captureTurn` takes a
 `[data-turn-tail]` element, `captureConversation` takes anything inside the conversation scroller, and
 both resolve to a shot object with the blob, pixel size, scale and renderer mode.
@@ -146,3 +168,7 @@ A rebuilt bundle is served under a content revision fixed at composition, so a r
 old bytes: toggle the plugin off and on, then reload.
 
 中文版见 [AGENTS.zh-CN.md](AGENTS.zh-CN.md)。
+
+
+
+

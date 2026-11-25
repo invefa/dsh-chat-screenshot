@@ -8,14 +8,24 @@
  * area branch; the per-side limit can demand a smaller factor on an absurdly tall frame, and the
  * clamp is what keeps the no-scale case honest.
  */
-import { MAX_AREA, MAX_SIDE, DEFAULT_SCALE, MIN_SCALE } from '../src/client/shell/const.js'
+import { MAX_AREA, MAX_SIDE, MAX_BLOCKS, DEFAULT_SCALE, MIN_SCALE } from '../src/client/shell/const.js'
 import { captureScale } from '../src/client/render/scale.js'
 import { xmlText, wrapMedia } from '../src/client/render/svg.js'
 import { planCrop } from '../src/client/dom/band.js'
 import { classifyPaging } from '../src/client/dom/paging.js'
 import { MAX_RULES } from '../src/client/shell/const.js'
 import { normalizeOptions, normalizeRule, normalizeRules, ruleId } from '../src/client/shell/options.js'
-import { fillTokens, insertMeta } from '../src/client/dom/inserts.js'
+import { addBlock, moveBlock, normalizeBlock, normalizeBlocks, readOptions, writeOptions } from '../src/client/shell/options.js'
+import { renderTemplate } from '../src/client/dom/tokens.js'
+
+// Node has no localStorage, and the option store is written through it, so the checks carry a tiny
+// key/value stand-in. Anything the real store does (JSON, defaults, normalisation) stays under test.
+const memory = new Map()
+globalThis.localStorage = {
+  getItem: (key) => (memory.has(key) ? memory.get(key) : null),
+  setItem: (key, value) => memory.set(key, String(value)),
+  removeItem: (key) => memory.delete(key),
+}
 
 const problems = []
 
@@ -157,21 +167,52 @@ check('a margin between presets lands on the closer one', normalizeOptions({ edg
 check('an unknown scale falls back to auto', normalizeOptions({ scale: '9' }).scale === 'auto', 'scale was not rejected')
 check('an unknown alignment falls back to left', normalizeOptions({ align: 'justify' }).align === 'left', 'align was not rejected')
 check('a switch that is not a boolean keeps its default', normalizeOptions({ hideClock: 'yes' }).hideClock === true, 'a string flipped a switch')
-check('text is trimmed and collapsed', normalizeOptions({ title: '  a   b  ' }).title === 'a b', 'text was not normalized')
-check('text is capped', normalizeOptions({ footer: 'x'.repeat(5_000) }).footer.length === 200, 'text was not capped')
+// Blocks: the picture's content is user data too, so a stored block is normalised on the way in and
+// a broken one is dropped rather than painted.
+const textBlock = normalizeBlock({ kind: 'text', text: '  hello  ', size: 'title', zone: 'top' })
+check('a text block keeps its text', textBlock !== null && textBlock.text === 'hello', JSON.stringify(textBlock))
+check('a text block keeps its zone', textBlock !== null && textBlock.zone === 'top', JSON.stringify(textBlock))
+check('an unknown block kind is dropped', normalizeBlock({ kind: 'video' }) === null, 'kept')
+const spacer = normalizeBlock({ kind: 'spacer', height: 900 })
+check('a spacer is clamped', spacer !== null && spacer.height === 240, JSON.stringify(spacer))
+const image = normalizeBlock({ kind: 'image', src: 'https://example.com/a.png' })
+check('a remote image is refused', image === null, JSON.stringify(image))
+const dataImage = normalizeBlock({ kind: 'image', src: 'data:image/png;base64,AAAA', width: 50 })
+check('a data image is kept', dataImage !== null && dataImage.width === 50, JSON.stringify(dataImage))
+const capped = normalizeBlocks(Array.from({ length: 40 }, () => ({ kind: 'divider' })))
+check('blocks are capped', capped.length === MAX_BLOCKS, String(capped.length))
+
+// Two zones, each contiguous: a block can move between them and the order inside a zone is preserved.
+writeOptions({
+  blocks: [
+    { id: 'a', kind: 'divider', zone: 'top' },
+    { id: 'b', kind: 'divider', zone: 'bottom' },
+  ],
+})
+const moved = moveBlock('b', 'top', 0)
+const afterMove = readOptions()
+check('a block moves between zones', moved !== null && afterMove.blocks[0].id === 'b' && afterMove.blocks[1].id === 'a', JSON.stringify(afterMove.blocks))
+const added = addBlock('bottom', { kind: 'spacer' })
+const afterAdd = readOptions()
+check('a block can be added', added !== null && afterAdd.blocks[afterAdd.blocks.length - 1].id === added.id, JSON.stringify(afterAdd.blocks))
+writeOptions({ blocks: [] })
+
+// The old shape of the settings still exists in the wild, so it is migrated instead of dropped.
+const legacy = normalizeOptions({ title: 'Hi', subtitle: 'There', footer: 'Bye', showMeta: true, divider: true }).blocks
+check('legacy text becomes blocks', legacy.some((block) => block.kind === 'text' && block.text === 'Hi'), JSON.stringify(legacy))
+check('legacy metadata becomes a meta block', legacy.some((block) => block.kind === 'meta'), JSON.stringify(legacy))
 
 // The inserted blocks: the meta line is formatted once and the reader's own placeholders are filled
 // from it, so the picture never prints an unresolved `{date}`.
-const meta = insertMeta(new Date(2026, 10, 25, 9, 5), 7)
-check('meta pads the clock', meta.time === '09:05', `got ${meta.time}`)
-check('meta formats the date', meta.date === '2026-11-25', `got ${meta.date}`)
-check('meta keeps the turn count', meta.turns === 7, `got ${meta.turns}`)
+const values = { turns: '7', date: '2026-11-25', time: '09:05', title: 'T', model: 'M', session: 'S', app: 'A', version: 'V', prompts: '3', weekday: 'Tue' }
 check(
   'tokens are filled',
-  fillTokens('{turns} | {date} {time}', meta) === '7 | 2026-11-25 09:05',
-  `got ${fillTokens('{turns} | {date} {time}', meta)}`,
+  renderTemplate('{turns} | {date} {time}', values) === '7 | 2026-11-25 09:05',
+  `got ${renderTemplate('{turns} | {date} {time}', values)}`,
 )
-check('unknown tokens survive', fillTokens('{nope}', meta) === '{nope}', 'an unknown token was eaten')
+check('unknown tokens survive', renderTemplate('{nope}', values) === '{nope}', 'an unknown token was eaten')
+check('a brace that is not a token survives', renderTemplate('{ a }', values) === '{ a }', 'the braces were eaten')
+check('a token can repeat', renderTemplate('{title}/{title}', values) === 'T/T', 'a repeat was not filled')
 
 // --- rules ------------------------------------------------------------------------------------
 // A rule is user data read back from storage, so everything about it is a claim to verify: the id
@@ -204,3 +245,5 @@ if (problems.length > 0) {
 } else {
   console.log('logic: ok')
 }
+
+

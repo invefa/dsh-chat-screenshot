@@ -95,11 +95,59 @@ export const EDGE_CHOICES = [8, 24, 40]
 /** Scale factors offered in the settings; `auto` keeps the largest factor the canvas budget allows. */
 export const SCALE_CHOICES = ['auto', '1', '2', '3']
 
-/** Text alignment of the inserted header and footer. */
+/** Text alignment of the inserted blocks. */
 export const ALIGN_CHOICES = ['left', 'center']
 
-/** Longest user text kept for the inserted blocks, in characters, so one paste cannot flood a picture. */
-export const INSERT_MAX_CHARS = { title: 120, subtitle: 160, footer: 200 }
+/**
+ * The picture's own content: a list of blocks above the transcript and below it.
+ *
+ * A block is one thing the reader put there on purpose — a line of text, a gap, an image, a rule, the
+ * date line — so what surrounds the transcript is data rather than a set of named fields. The two
+ * zones are the only places a capture can add anything, because the SVG path serializes the clone and
+ * nothing may be laid out beside it.
+ */
+export const BLOCK_ZONES = ['top', 'bottom']
+
+/** The kinds the library offers, in the order the palette lists them. */
+export const BLOCK_KINDS = ['text', 'spacer', 'image', 'divider', 'meta']
+
+/** Type sizes a text block can be drawn at. */
+export const TEXT_SIZES = ['title', 'subtitle', 'body']
+
+/** Caps: the blocks and saved components live in one storage key and are applied to every capture. */
+export const MAX_BLOCKS = 24
+export const MAX_CUSTOM = 12
+export const BLOCK_TEXT_CHARS = 400
+export const BLOCK_NAME_CHARS = 40
+export const SPACER_MIN = 4
+export const SPACER_MAX = 240
+export const IMAGE_WIDTH_MIN = 10
+export const IMAGE_WIDTH_MAX = 100
+export const IMAGE_MAX_CHARS = 800_000
+
+/**
+ * Tokens a text block can carry.
+ *
+ * The values come from the conversation the capture is taken from — how many turns it holds, what it
+ * is called, which model answered, what day it is — so a header can describe the shot it is part of
+ * instead of repeating one fixed sentence on every picture.
+ */
+export const TEMPLATE_TOKENS = [
+  'turns',
+  'prompts',
+  'date',
+  'time',
+  'weekday',
+  'title',
+  'model',
+  'session',
+  'app',
+  'version',
+]
+
+/** Marks one block in the copy, and the zone wrapper that holds the blocks of one zone. */
+export const BLOCK_ATTRIBUTE = 'data-dsh-screenshot-block'
+export const ZONE_ATTRIBUTE = 'data-dsh-screenshot-zone'
 
 /**
  * Host markers for the subtrees the settings can hide. Each is matched by attribute, never by one of

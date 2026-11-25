@@ -14,6 +14,7 @@ import { captureConversation } from './dom/capture.js'
 import { captureTurn } from './dom/turn.js'
 import { ScreenshotButton, TurnScreenshotButton } from './views/buttons.js'
 import { SettingsSection } from './views/settings.js'
+import { openEditor } from './views/editor.js'
 /** Services this bundle cannot work without. */
 export const inject = ['slots', 'locale']
 
@@ -73,6 +74,7 @@ export function apply(ctx) {
     window.__chatScreenshot = {
       captureConversation,
       captureTurn,
+      openEditor,
       translate,
     }
     return () => {

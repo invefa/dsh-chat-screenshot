@@ -24,7 +24,8 @@ import {
 import { readOptions } from '../shell/options.js'
 import { dropSkipped, sanitizeClone } from './clone.js'
 import { applyRules } from './rules.js'
-import { insertBlocks, insertMeta } from './inserts.js'
+import { insertBlocks } from './inserts.js'
+import { tokenValues } from './tokens.js'
 import { pieceBottom, planCrop } from './band.js'
 import { renderStage } from '../render/index.js'
 import { captureScale, nextFrame, waitForImages } from '../render/scale.js'
@@ -132,7 +133,7 @@ export async function captureConversation(anchor, pruneClone) {
     // The reader's own header and footer go in after the band is pruned, so a one-turn capture carries
     // them too, and inside the clone, so the SVG serializer sees them.
     const turns = clone.querySelectorAll(`[${TURN_ATTRIBUTE}]`).length
-    const blocks = insertBlocks(clone, options, insertMeta(new Date(), turns))
+    const blocks = insertBlocks(clone, options, { ...tokenValues(doc), turns: String(turns) })
     clone.style.setProperty('width', `${width}px`)
     // `width` has to mean the outer box. The app surface's padding is part of `clientWidth`, so
     // under `content-box` the clone grew by its own horizontal padding, which pushed the transcript

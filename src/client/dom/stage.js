@@ -24,7 +24,8 @@ import {
 import { pieceBottom } from './band.js'
 import { dropSkipped, sanitizeClone } from './clone.js'
 import { applyRules } from './rules.js'
-import { RAW_META, insertBlocks } from './inserts.js'
+import { insertBlocks } from './inserts.js'
+import { tokenValues } from './tokens.js'
 import { resolveBackground } from './capture.js'
 
 /**
@@ -138,7 +139,9 @@ export function buildStage(anchor, options, labels) {
   dropSkipped(clone)
   const applied = applyRules(clone, options)
   const turns = clone.querySelectorAll(`[${TURN_ATTRIBUTE}]`).length
-  const blocks = insertBlocks(clone, options, { ...RAW_META, turns }, labels)
+  // The edit surface shows the templates as written: a header has to stay editable, so `{date}` here
+  // is the placeholder rather than the day it would print.
+  const blocks = insertBlocks(clone, options, { ...tokenValues(doc), turns: String(turns) }, labels)
 
   clone.style.setProperty('width', `${width}px`)
   clone.style.setProperty('box-sizing', 'border-box')

@@ -246,17 +246,141 @@ export const STYLES = String.raw`
   min-height: 0;
   display: flex;
 }
-.cs-ed-side {
+.cs-ed-tray {
   display: flex;
   flex: none;
-  width: 268px;
+  flex-direction: column;
+  max-height: 42%;
+  min-height: 132px;
+  overflow: hidden;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+}
+.cs-ed-cols {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+.cs-ed-pane {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
   gap: 10px;
   overflow: auto;
   padding: 12px 16px 16px;
-  border-left: 1px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-layer-1);
   font-size: 12px;
+}
+.cs-ed-pane + .cs-ed-pane {
+  flex: 0 0 300px;
+  border-left: 1px solid var(--dsw-alias-border-l1);
+}
+.cs-ed-lib {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.cs-ed-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px dashed var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: grab;
+  text-align: left;
+}
+.cs-ed-add:hover {
+  border-color: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-brand-primary);
+}
+.cs-ed-add-custom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cs-ed-add-custom .cs-ed-add {
+  flex: 1;
+  min-width: 0;
+}
+.cs-ed-x {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cs-ed-x:hover {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+}
+.cs-ed-token {
+  padding: 1px 5px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  cursor: pointer;
+}
+.cs-ed-token:hover {
+  border-color: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-brand-primary);
+}
+.cs-ed-area {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 5px 7px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 5px;
+  background: var(--dsw-alias-bg-base);
+  color: inherit;
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+.cs-ed-area:focus-visible {
+  border-color: var(--dsw-alias-brand-primary);
+  outline: none;
+}
+.cs-ed-select {
+  flex: none;
+  max-width: 132px;
+  padding: 4px 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 5px;
+  background: var(--dsw-alias-bg-base);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+.cs-ed-file {
+  display: none;
+}
+.cs-ed-drop {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--dsw-alias-brand-primary);
+  pointer-events: none;
 }
 .cs-ed-side-empty {
   padding: 12px 0;
@@ -451,6 +575,34 @@ export const STYLES = String.raw`
   outline: 1px solid var(--dsw-alias-brand-primary);
   outline-offset: 2px;
 }
+.cs-ed-stage [data-dsh-screenshot-block] {
+  cursor: move;
+  outline: 1px dashed transparent;
+  outline-offset: 1px;
+}
+.cs-ed-stage [data-dsh-screenshot-block]:hover {
+  outline-color: var(--dsw-alias-border-l4);
+}
+.cs-ed-stage [data-dsh-screenshot-block].cs-ed-sel {
+  outline: 1px solid var(--dsw-alias-brand-primary) !important;
+}
+.cs-blk-zone {
+  display: block;
+  min-height: 0;
+}
+.cs-blk-empty {
+  margin: 6px 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+.cs-blk-empty:hover {
+  border-color: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-brand-primary);
+}
 .cs-ed-field[data-empty='true']::before {
   content: attr(data-cs-placeholder);
   opacity: 0.55;
@@ -476,3 +628,4 @@ export function installStyle() {
   document.head.appendChild(style)
   return () => style.remove()
 }
+

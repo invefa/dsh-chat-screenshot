@@ -116,11 +116,59 @@ window.__ModuleLoader__.load({
     /** Scale factors offered in the settings; `auto` keeps the largest factor the canvas budget allows. */
     const SCALE_CHOICES = ['auto', '1', '2', '3']
 
-    /** Text alignment of the inserted header and footer. */
+    /** Text alignment of the inserted blocks. */
     const ALIGN_CHOICES = ['left', 'center']
 
-    /** Longest user text kept for the inserted blocks, in characters, so one paste cannot flood a picture. */
-    const INSERT_MAX_CHARS = { title: 120, subtitle: 160, footer: 200 }
+    /**
+     * The picture's own content: a list of blocks above the transcript and below it.
+     *
+     * A block is one thing the reader put there on purpose — a line of text, a gap, an image, a rule, the
+     * date line — so what surrounds the transcript is data rather than a set of named fields. The two
+     * zones are the only places a capture can add anything, because the SVG path serializes the clone and
+     * nothing may be laid out beside it.
+     */
+    const BLOCK_ZONES = ['top', 'bottom']
+
+    /** The kinds the library offers, in the order the palette lists them. */
+    const BLOCK_KINDS = ['text', 'spacer', 'image', 'divider', 'meta']
+
+    /** Type sizes a text block can be drawn at. */
+    const TEXT_SIZES = ['title', 'subtitle', 'body']
+
+    /** Caps: the blocks and saved components live in one storage key and are applied to every capture. */
+    const MAX_BLOCKS = 24
+    const MAX_CUSTOM = 12
+    const BLOCK_TEXT_CHARS = 400
+    const BLOCK_NAME_CHARS = 40
+    const SPACER_MIN = 4
+    const SPACER_MAX = 240
+    const IMAGE_WIDTH_MIN = 10
+    const IMAGE_WIDTH_MAX = 100
+    const IMAGE_MAX_CHARS = 800_000
+
+    /**
+     * Tokens a text block can carry.
+     *
+     * The values come from the conversation the capture is taken from — how many turns it holds, what it
+     * is called, which model answered, what day it is — so a header can describe the shot it is part of
+     * instead of repeating one fixed sentence on every picture.
+     */
+    const TEMPLATE_TOKENS = [
+      'turns',
+      'prompts',
+      'date',
+      'time',
+      'weekday',
+      'title',
+      'model',
+      'session',
+      'app',
+      'version',
+    ]
+
+    /** Marks one block in the copy, and the zone wrapper that holds the blocks of one zone. */
+    const BLOCK_ATTRIBUTE = 'data-dsh-screenshot-block'
+    const ZONE_ATTRIBUTE = 'data-dsh-screenshot-zone'
 
     /**
      * Host markers for the subtrees the settings can hide. Each is matched by attribute, never by one of
@@ -363,14 +411,7 @@ window.__ModuleLoader__.load({
       'hideComposer',
     ]
 
-    /** The free-text blocks the picture can carry, with the length each one is capped at. */
-    const TEXT_FIELDS = [
-      ['title', INSERT_MAX_CHARS.title],
-      ['subtitle', INSERT_MAX_CHARS.subtitle],
-      ['footer', INSERT_MAX_CHARS.footer],
-    ]
-
-    /** What a capture shows when the reader has never opened the settings page. */
+    /** What a capture shows when the reader has never opened the editor. */
     const OPTION_DEFAULTS = Object.freeze({
       hideClock: true,
       hideProcess: false,
@@ -380,11 +421,8 @@ window.__ModuleLoader__.load({
       hideToBottom: true,
       hidePaging: true,
       hideComposer: true,
-      title: '',
-      subtitle: '',
-      footer: '',
-      showMeta: false,
-      divider: true,
+      blocks: [],
+      custom: [],
       align: 'left',
       edge: EDGE_PADDING,
       scale: 'auto',
@@ -403,6 +441,14 @@ window.__ModuleLoader__.load({
         hash = (hash * 31 + selector.charCodeAt(index)) | 0
       }
       return `r${(hash >>> 0).toString(36)}`
+    }
+
+    let blockCounter = 0
+
+    /** A fresh id for one block. Blocks are placed, reordered and removed, so they cannot key on content. */
+    function newBlockId() {
+      blockCounter += 1
+      return `b${Date.now().toString(36)}${blockCounter.toString(36)}`
     }
 
     /** One style map, keeping only the offered properties and only non-empty values. */
@@ -461,6 +507,141 @@ window.__ModuleLoader__.load({
       return Array.from(byId.values()).slice(0, MAX_RULES)
     }
 
+    /** One number inside a range, or the fallback. */
+    function clampNumber(value, min, max, fallback) {
+      const number = Number(value)
+      if (!Number.isFinite(number)) return fallback
+      return Math.min(max, Math.max(min, Math.round(number)))
+    }
+
+    /** A zone name, or the fallback. */
+    function zoneOf(value) {
+      return BLOCK_ZONES.includes(value) ? value : 'top'
+    }
+
+    /** A text size, or `body`. */
+    function sizeOf(value) {
+      return TEXT_SIZES.includes(value) ? value : 'body'
+    }
+
+    /** An alignment, or the fallback. */
+    function alignOf(value, fallback) {
+      return ALIGN_CHOICES.includes(value) ? value : fallback
+    }
+
+    /**
+     * The content of a block, without the fields its kind does not use.
+     *
+     * Keeping one shape per kind means the capture, the editor and a saved component all read the same
+     * three or four fields, and a hand-edited store cannot smuggle a font size into a divider.
+     */
+    function normalizeContent(kind, raw, align) {
+      if (kind === 'text') {
+        const text =
+          typeof raw.text === 'string'
+            ? raw.text
+                .replace(/[ \t]+/g, ' ')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim()
+                .slice(0, BLOCK_TEXT_CHARS)
+            : ''
+        return { text, size: sizeOf(raw.size), align: alignOf(raw.align, align) }
+      }
+      if (kind === 'spacer') return { height: clampNumber(raw.height, SPACER_MIN, SPACER_MAX, 24) }
+      if (kind === 'image') {
+        const src = typeof raw.src === 'string' && raw.src.startsWith('data:image/') ? raw.src : ''
+        return {
+          src: src.length <= IMAGE_MAX_CHARS ? src : '',
+          width: clampNumber(raw.width, IMAGE_WIDTH_MIN, IMAGE_WIDTH_MAX, 100),
+        }
+      }
+      return {}
+    }
+
+    /** Clamp one stored block onto the shape the capture understands. */
+    function normalizeBlock(raw, fallbackAlign = 'left') {
+      if (raw === null || typeof raw !== 'object') return null
+      // A block whose kind this version does not know is dropped rather than turned into something the
+      // user never asked for: an unknown kind is data from a newer version, not a text block.
+      if (!BLOCK_KINDS.includes(raw.kind)) return null
+      const kind = raw.kind
+      const content = normalizeContent(kind, raw, fallbackAlign)
+      // An image with no usable bytes would paint an empty box, so it never becomes a block.
+      if (kind === 'image' && content.src === '') return null
+      const id = typeof raw.id === 'string' && raw.id !== '' ? raw.id.slice(0, 40) : newBlockId()
+      return {
+        id,
+        kind,
+        zone: zoneOf(raw.zone),
+        ...content,
+      }
+    }
+
+    /** Every stored block, in the order it was placed, capped. */
+    function normalizeBlocks(raw, align = 'left') {
+      if (!Array.isArray(raw)) return []
+      const blocks = []
+      for (const entry of raw) {
+        const block = normalizeBlock(entry, align)
+        if (block === null) continue
+        blocks.push(block)
+        if (blocks.length >= MAX_BLOCKS) break
+      }
+      return blocks
+    }
+
+    /** One saved component: a named block shape the palette can drop again. */
+    function normalizeCustom(raw) {
+      if (raw === null || typeof raw !== 'object') return null
+      const source = raw.block !== null && typeof raw.block === 'object' ? raw.block : raw
+      const kind = BLOCK_KINDS.includes(source.kind) ? source.kind : 'text'
+      const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, BLOCK_NAME_CHARS) : ''
+      if (name === '') return null
+      return {
+        id: typeof raw.id === 'string' && raw.id !== '' ? raw.id.slice(0, 40) : newBlockId(),
+        name,
+        block: { kind, ...normalizeContent(kind, source, 'left') },
+      }
+    }
+
+    /** Every saved component, deduplicated by id and capped. */
+    function normalizeCustoms(raw) {
+      if (!Array.isArray(raw)) return []
+      const seen = new Set()
+      const list = []
+      for (const entry of raw) {
+        const custom = normalizeCustom(entry)
+        if (custom === null || seen.has(custom.id)) continue
+        seen.add(custom.id)
+        list.push(custom)
+        if (list.length >= MAX_CUSTOM) break
+      }
+      return list
+    }
+
+    /**
+     * The settings of the build before blocks existed, read as blocks.
+     *
+     * Anyone who had already filled in a title, a subtitle or a footer keeps exactly the picture they
+     * had: those three become text blocks in the zone they used to occupy, the divider and the date line
+     * become blocks too, and the fields themselves stop being read once `blocks` exists.
+     */
+    function legacyBlocks(source) {
+      const align = alignOf(source.align, 'left')
+      const text = (value, limit) =>
+        typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, limit) : ''
+      const title = text(source.title, 120)
+      const subtitle = text(source.subtitle, 160)
+      const footer = text(source.footer, 200)
+      const blocks = []
+      if (title !== '') blocks.push({ kind: 'text', zone: 'top', text: title, size: 'title', align })
+      if (subtitle !== '') blocks.push({ kind: 'text', zone: 'top', text: subtitle, size: 'subtitle', align })
+      if (source.divider === true) blocks.push({ kind: 'divider', zone: 'top' })
+      if (footer !== '') blocks.push({ kind: 'text', zone: 'bottom', text: footer, size: 'body', align })
+      if (source.showMeta === true) blocks.push({ kind: 'meta', zone: 'bottom' })
+      return blocks
+    }
+
     /** The nearest offered preset, so a stored value outside the list still lands on a real one. */
     function nearestEdge(value) {
       const number = Number(value)
@@ -477,22 +658,18 @@ window.__ModuleLoader__.load({
       for (const flag of HIDE_FLAGS) {
         if (typeof source[flag] === 'boolean') next[flag] = source[flag]
       }
-      for (const [field, limit] of TEXT_FIELDS) {
-        const value = source[field]
-        if (typeof value === 'string') next[field] = value.replace(/\s+/g, ' ').trim().slice(0, limit)
-      }
-      if (typeof source.showMeta === 'boolean') next.showMeta = source.showMeta
-      if (typeof source.divider === 'boolean') next.divider = source.divider
-      if (ALIGN_CHOICES.includes(source.align)) next.align = source.align
-      if (SCALE_CHOICES.includes(source.scale)) next.scale = source.scale
+      next.align = alignOf(source.align, next.align)
+      next.scale = SCALE_CHOICES.includes(source.scale) ? source.scale : next.scale
       next.edge = nearestEdge(source.edge)
+      next.blocks = normalizeBlocks(Array.isArray(source.blocks) ? source.blocks : legacyBlocks(source), next.align)
+      next.custom = normalizeCustoms(source.custom)
       next.rules = normalizeRules(source.rules)
       return next
     }
 
     /** Whether the chosen options put anything above or below the transcript. */
     function hasInserts(options) {
-      return options.title !== '' || options.subtitle !== '' || options.footer !== '' || options.showMeta
+      return Array.isArray(options.blocks) && options.blocks.length > 0
     }
 
     /** The page's storage, or null when the browser refuses it (private mode, disabled storage). */
@@ -603,6 +780,89 @@ window.__ModuleLoader__.load({
       writeOptions({ rules: current.rules.filter((rule) => rule.selector !== selector) })
     }
 
+    /** The block with one id, or null. */
+    function blockFor(options, id) {
+      return options.blocks.find((block) => block.id === id) ?? null
+    }
+
+    /** Insert one block, at an index inside its zone (the end when the index is out of range). */
+    function addBlock(zone, block, index = -1) {
+      const current = readOptions()
+      const stored = normalizeBlock({ ...block, zone: zoneOf(zone) }, current.align)
+      if (stored === null) return null
+      const blocks = [...current.blocks]
+      const bounds = zoneBounds(blocks, stored.zone)
+      const at = index < 0 || index > bounds.count ? zoneStart(blocks, stored.zone) + bounds.count : zoneStart(blocks, stored.zone) + index
+      blocks.splice(at, 0, stored)
+      writeOptions({ blocks })
+      return stored
+    }
+
+    /** Change the fields of one block. */
+    function updateBlock(id, patch) {
+      const current = readOptions()
+      const existing = blockFor(current, id)
+      if (existing === null) return null
+      const saved = normalizeBlock({ ...existing, ...patch, id }, current.align)
+      if (saved === null) return null
+      writeOptions({ blocks: current.blocks.map((block) => (block.id === id ? saved : block)) })
+      return saved
+    }
+
+    /** Remove one block. */
+    function removeBlock(id) {
+      const current = readOptions()
+      writeOptions({ blocks: current.blocks.filter((block) => block.id !== id) })
+    }
+
+    /** The index of the first block of one zone; blocks of a zone are kept contiguous. */
+    function zoneStart(blocks, zone) {
+      const index = blocks.findIndex((block) => block.zone === zone)
+      if (index >= 0) return index
+      return zone === 'top' ? 0 : blocks.length
+    }
+
+    /** How many blocks one zone holds. */
+    function zoneBounds(blocks, zone) {
+      return { start: zoneStart(blocks, zone), count: blocks.filter((block) => block.zone === zone).length }
+    }
+
+    /**
+     * Move one block to another place.
+     *
+     * Zones stay contiguous, so a block dropped between two blocks of the other zone lands at the edge of
+     * the zone it was dropped into rather than splitting the other one.
+     */
+    function moveBlock(id, zone, index) {
+      const current = readOptions()
+      const existing = blockFor(current, id)
+      if (existing === null) return null
+      const rest = current.blocks.filter((block) => block.id !== id)
+      const moved = { ...existing, zone: zoneOf(zone) }
+      const bounds = zoneBounds(rest, moved.zone)
+      const at = Math.min(bounds.start + Math.max(0, index), bounds.start + bounds.count)
+      const blocks = [...rest.slice(0, at), moved, ...rest.slice(at)]
+      writeOptions({ blocks })
+      return moved
+    }
+
+    /** Save the shape of one block as a component the palette can drop again. */
+    function saveCustom(name, block) {
+      const label = typeof name === 'string' ? name.trim().slice(0, BLOCK_NAME_CHARS) : ''
+      if (label === '' || block === null || typeof block !== 'object') return null
+      const current = readOptions()
+      const custom = normalizeCustom({ name: label, block })
+      if (custom === null) return null
+      writeOptions({ custom: [custom, ...current.custom] })
+      return custom
+    }
+
+    /** Forget one saved component. */
+    function dropCustom(id) {
+      const current = readOptions()
+      writeOptions({ custom: current.custom.filter((entry) => entry.id !== id) })
+    }
+
     /** The options in a component, re-rendered on every change. */
     function useOptions() {
       return react.useSyncExternalStore(subscribeOptions, readOptions, readOptions)
@@ -654,45 +914,72 @@ window.__ModuleLoader__.load({
         'settings.title': '对话截图',
         'settings.intro': '在这里直接把截图调成想要的样子。点部件隐藏它，再点放回来；页头和页脚就在它们出现的位置写。改动立刻生效，并保存在本机。',
         'settings.editor.open': '在对话中调整…',
-        'settings.editor.noConversation': '先打开一个会话，再回来调整。',
-        'settings.editor.hint': '双击画面里的任意元素即可隐藏，被隐藏的条目列在下方：单击定位，双击还原；侧栏可以改名和改样式，右键还有更多。',
-        'settings.editor.pick': '选取元素',
-        'settings.editor.done': '完成',
-        'settings.editor.hide': '隐藏',
-        'settings.editor.restore': '还原',
-        'settings.editor.removeRule': '删除这个元素的规则',
-        'settings.editor.hidden': '已隐藏',
-        'settings.editor.hiddenEmpty': '没有隐藏的元素。双击画面里的元素就能隐藏它。',
-        'settings.editor.hiddenHint': '单击定位，双击还原',
-        'settings.editor.side.none': '点画面里的任意元素，查看它的标签、选择器和样式。',
-        'settings.editor.side.hide': '隐藏',
-        'settings.editor.side.name': '名称',
-        'settings.editor.side.presets': '预设',
-        'settings.editor.side.style': '样式',
-        'settings.editor.side.attrs': '属性',
-        'settings.editor.side.value': '值',
-        'settings.editor.side.add': '添加',
-        'settings.editor.side.remove': '移除',
-        'settings.editor.side.ruleNote': '改动按元素的选择器保存，截图时对同结构的元素生效。',
-        'settings.editor.preset.dim': '淡化',
-        'settings.editor.preset.mark': '描边',
-        'settings.editor.preset.tight': '去留白',
-        'settings.editor.preset.plain': '去底色',
-        'settings.editor.preset.mono': '等宽字体',
-        'settings.editor.preset.small': '小字号',
-        'settings.piece.nav': '轮次导航',
-        'settings.piece.attachments': '用户附件条',
-        'settings.piece.process': '思考与工具过程',
-        'settings.piece.clock': '时钟与操作行',
-        'settings.piece.toBottom': '回到底部按钮',
-        'settings.piece.handles': '拖拽手柄与占位',
-        'settings.piece.paging': '加载更早的控件',
-        'settings.piece.composer': '输入区',
-        'settings.piece.meta': '页脚信息行',
-        'settings.piece.divider': '分隔线',
-        'settings.edit.title': '添加标题',
-        'settings.edit.subtitle': '添加副标题',
-        'settings.edit.footer': '添加页脚',
+      'settings.editor.noConversation': '先打开一个会话，再回来调整。',
+      'settings.editor.hint': '双击画面里的任意元素即可隐藏，被隐藏的条目列在下方：单击定位，双击还原；画面下方的托盘可以增删内容块、改名和改样式。',
+      'settings.editor.pick': '选取元素',
+      'settings.editor.done': '完成',
+      'settings.editor.hide': '隐藏',
+      'settings.editor.restore': '还原',
+      'settings.editor.removeRule': '删除这个元素的规则',
+      'settings.editor.hidden': '已隐藏',
+      'settings.editor.hiddenEmpty': '没有隐藏的元素。双击画面里的元素就能隐藏它。',
+      'settings.editor.hiddenHint': '单击定位，双击还原',
+      'settings.editor.side.none': '点画面里的任意元素，查看它的标签、选择器和样式。',
+      'settings.editor.side.hide': '隐藏',
+      'settings.editor.side.name': '名称',
+      'settings.editor.side.attrName': '属性名',
+      'settings.editor.side.style': '样式',
+      'settings.editor.side.attrs': '属性',
+      'settings.editor.side.value': '值',
+      'settings.editor.side.add': '添加',
+      'settings.editor.side.remove': '移除',
+      'settings.editor.side.ruleNote': '改动按元素的选择器保存，截图时对同结构的元素生效。',
+      'settings.editor.preset.dim': '淡化',
+      'settings.editor.preset.mark': '描边',
+      'settings.editor.preset.tight': '去留白',
+      'settings.editor.preset.plain': '去底色',
+      'settings.editor.preset.mono': '等宽字体',
+      'settings.editor.preset.small': '小字号',
+      'settings.editor.library': '组件库',
+      'settings.editor.tokensHint': '插入变量',
+      'settings.editor.zone.top': '页头',
+      'settings.editor.zone.bottom': '页脚',
+      'settings.editor.align.left': '左对齐',
+      'settings.editor.align.center': '居中',
+      'settings.editor.block.text': '文本',
+      'settings.editor.block.textHint': '写点什么，{turns} 这样的变量会换成真实内容',
+      'settings.editor.block.size': '字号',
+      'settings.editor.block.align': '对齐',
+      'settings.editor.block.height': '高度',
+      'settings.editor.block.width': '宽度',
+      'settings.editor.block.image': '图片',
+      'settings.editor.block.imagePick': '选择图片',
+      'settings.editor.block.imageChange': '换一张',
+      'settings.editor.block.imageHint': '拖动放置，或从面板选择图片',
+      'settings.editor.block.save': '存为组件',
+      'settings.editor.block.saveName': '组件名',
+      'settings.editor.block.delete': '删除',
+      'settings.editor.block.toTop': '移到页头',
+      'settings.editor.block.toBottom': '移到页脚',
+      'settings.editor.block.dropCustom': '存为自定义组件',
+      'settings.editor.block.customFull': '自定义组件已满。',
+      'settings.editor.block.zoneHint': '把内容块拖到这里可以调顺序',
+      'settings.editor.block.dragHint': '拖进画面即可放置',
+      'settings.editor.block.divider': '分隔线',
+      'settings.editor.block.spacer': '间隙',
+      'settings.editor.block.meta': '信息行',
+      'settings.editor.block.sizeTitle': '标题',
+      'settings.editor.block.sizeSubtitle': '副标题',
+      'settings.editor.block.sizeBody': '正文',
+      'settings.piece.nav': '轮次导航',
+      'settings.piece.attachments': '用户附件条',
+      'settings.piece.process': '思考与工具过程',
+      'settings.piece.clock': '时钟与操作行',
+      'settings.piece.toBottom': '回到底部按钮',
+      'settings.piece.handles': '拖拽手柄与占位',
+      'settings.piece.paging': '加载更早的控件',
+      'settings.piece.composer': '输入区',
+
         'settings.layout.align': '文字对齐',
         'settings.layout.alignHint': '页头与页脚的对齐方式',
         'settings.align.left': '左对齐',
@@ -741,45 +1028,72 @@ window.__ModuleLoader__.load({
         'settings.title': 'Chat screenshot',
         'settings.intro': 'Shape the capture right here. Click a piece to drop it, click it again to bring it back, and write the header and footer where they appear. Changes apply at once and are stored on this machine.',
         'settings.editor.open': 'Adjust in the conversation…',
-        'settings.editor.noConversation': 'Open a conversation first, then come back.',
-        'settings.editor.hint': 'Double-click any element to hide it. Hidden entries sit in the list below: click to locate, double-click to restore. The side panel renames and restyles; the right button offers more.',
-        'settings.editor.pick': 'Pick an element',
-        'settings.editor.done': 'Done',
-        'settings.editor.hide': 'Hidden',
-        'settings.editor.restore': 'Restore',
-        'settings.editor.removeRule': 'Delete the rule for this element',
-        'settings.editor.hidden': 'Hidden',
-        'settings.editor.hiddenEmpty': 'Nothing is hidden. Double-click an element to hide it.',
-        'settings.editor.hiddenHint': 'Click to locate, double-click to restore',
-        'settings.editor.side.none': 'Click any element in the picture to see its tag, selector and style.',
-        'settings.editor.side.hide': 'Hidden',
-        'settings.editor.side.name': 'Name',
-        'settings.editor.side.presets': 'Presets',
-        'settings.editor.side.style': 'Style',
-        'settings.editor.side.attrs': 'Attributes',
-        'settings.editor.side.value': 'Value',
-        'settings.editor.side.add': 'Add',
-        'settings.editor.side.remove': 'Remove',
-        'settings.editor.side.ruleNote': 'Changes are stored per selector and apply to the same element in a capture.',
-        'settings.editor.preset.dim': 'Dim',
-        'settings.editor.preset.mark': 'Outline',
-        'settings.editor.preset.tight': 'Tight',
-        'settings.editor.preset.plain': 'No fill',
-        'settings.editor.preset.mono': 'Monospace',
-        'settings.editor.preset.small': 'Smaller',
-        'settings.piece.nav': 'Turn navigator',
-        'settings.piece.attachments': 'Attachment strip',
-        'settings.piece.process': 'Thinking and tool steps',
-        'settings.piece.clock': 'Clock and action row',
-        'settings.piece.toBottom': 'Back-to-bottom button',
-        'settings.piece.handles': 'Drag handles and spacers',
-        'settings.piece.paging': 'Load-earlier control',
-        'settings.piece.composer': 'Composer',
-        'settings.piece.meta': 'Footer meta line',
-        'settings.piece.divider': 'Divider',
-        'settings.edit.title': 'Add a title',
-        'settings.edit.subtitle': 'Add a subtitle',
-        'settings.edit.footer': 'Add a footer',
+      'settings.editor.noConversation': 'Open a conversation first, then come back.',
+      'settings.editor.hint': 'Double-click any element to hide it. Hidden entries sit in the list below: click to locate, double-click to restore. The tray under the picture adds content blocks and restyles them.',
+      'settings.editor.pick': 'Pick an element',
+      'settings.editor.done': 'Done',
+      'settings.editor.hide': 'Hidden',
+      'settings.editor.restore': 'Restore',
+      'settings.editor.removeRule': 'Delete the rule for this element',
+      'settings.editor.hidden': 'Hidden',
+      'settings.editor.hiddenEmpty': 'Nothing is hidden. Double-click an element to hide it.',
+      'settings.editor.hiddenHint': 'Click to locate, double-click to restore',
+      'settings.editor.side.none': 'Click any element in the picture to see its tag, selector and style.',
+      'settings.editor.side.hide': 'Hidden',
+      'settings.editor.side.name': 'Name',
+      'settings.editor.side.attrName': 'Attribute',
+      'settings.editor.side.style': 'Style',
+      'settings.editor.side.attrs': 'Attributes',
+      'settings.editor.side.value': 'Value',
+      'settings.editor.side.add': 'Add',
+      'settings.editor.side.remove': 'Remove',
+      'settings.editor.side.ruleNote': 'Changes are stored per selector and apply to the same element in a capture.',
+      'settings.editor.preset.dim': 'Dim',
+      'settings.editor.preset.mark': 'Outline',
+      'settings.editor.preset.tight': 'Tight',
+      'settings.editor.preset.plain': 'No fill',
+      'settings.editor.preset.mono': 'Monospace',
+      'settings.editor.preset.small': 'Smaller',
+      'settings.editor.library': 'Library',
+      'settings.editor.tokensHint': 'Insert a variable',
+      'settings.editor.zone.top': 'Top',
+      'settings.editor.zone.bottom': 'Bottom',
+      'settings.editor.align.left': 'Left',
+      'settings.editor.align.center': 'Center',
+      'settings.editor.block.text': 'Text',
+      'settings.editor.block.textHint': 'Type anything; {turns} and friends become real values',
+      'settings.editor.block.size': 'Size',
+      'settings.editor.block.align': 'Align',
+      'settings.editor.block.height': 'Height',
+      'settings.editor.block.width': 'Width',
+      'settings.editor.block.image': 'Image',
+      'settings.editor.block.imagePick': 'Choose an image',
+      'settings.editor.block.imageChange': 'Replace',
+      'settings.editor.block.imageHint': 'Drag to place, or pick an image in the panel',
+      'settings.editor.block.save': 'Save as component',
+      'settings.editor.block.saveName': 'Component name',
+      'settings.editor.block.delete': 'Delete',
+      'settings.editor.block.toTop': 'Move to top',
+      'settings.editor.block.toBottom': 'Move to bottom',
+      'settings.editor.block.dropCustom': 'Save as a custom component',
+      'settings.editor.block.customFull': 'Custom components are full.',
+      'settings.editor.block.zoneHint': 'Drag a content block here to reorder',
+      'settings.editor.block.dragHint': 'Drag into the picture to place',
+      'settings.editor.block.divider': 'Divider',
+      'settings.editor.block.spacer': 'Spacer',
+      'settings.editor.block.meta': 'Meta line',
+      'settings.editor.block.sizeTitle': 'Title',
+      'settings.editor.block.sizeSubtitle': 'Subtitle',
+      'settings.editor.block.sizeBody': 'Body',
+      'settings.piece.nav': 'Turn navigator',
+      'settings.piece.attachments': 'Attachment strip',
+      'settings.piece.process': 'Thinking and tool steps',
+      'settings.piece.clock': 'Clock and action row',
+      'settings.piece.toBottom': 'Back-to-bottom button',
+      'settings.piece.handles': 'Drag handles and spacers',
+      'settings.piece.paging': 'Load-earlier control',
+      'settings.piece.composer': 'Composer',
+
         'settings.layout.align': 'Text alignment',
         'settings.layout.alignHint': 'Alignment of the added header and footer',
         'settings.align.left': 'Left',
@@ -1111,17 +1425,141 @@ window.__ModuleLoader__.load({
       min-height: 0;
       display: flex;
     }
-    .cs-ed-side {
+    .cs-ed-tray {
       display: flex;
       flex: none;
-      width: 268px;
+      flex-direction: column;
+      max-height: 42%;
+      min-height: 132px;
+      overflow: hidden;
+      border-top: 1px solid var(--dsw-alias-border-l1);
+      background: var(--dsw-alias-bg-layer-1);
+    }
+    .cs-ed-cols {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      gap: 0;
+    }
+    .cs-ed-pane {
+      display: flex;
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
       flex-direction: column;
       gap: 10px;
       overflow: auto;
       padding: 12px 16px 16px;
-      border-left: 1px solid var(--dsw-alias-border-l1);
-      background: var(--dsw-alias-bg-layer-1);
       font-size: 12px;
+    }
+    .cs-ed-pane + .cs-ed-pane {
+      flex: 0 0 300px;
+      border-left: 1px solid var(--dsw-alias-border-l1);
+    }
+    .cs-ed-lib {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 0;
+    }
+    .cs-ed-add {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border: 1px dashed var(--dsw-alias-border-l2);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--dsw-alias-label-secondary);
+      font: inherit;
+      font-size: 12px;
+      cursor: grab;
+      text-align: left;
+    }
+    .cs-ed-add:hover {
+      border-color: var(--dsw-alias-brand-primary);
+      color: var(--dsw-alias-brand-primary);
+    }
+    .cs-ed-add-custom {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .cs-ed-add-custom .cs-ed-add {
+      flex: 1;
+      min-width: 0;
+    }
+    .cs-ed-x {
+      flex: none;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--dsw-alias-label-tertiary);
+      font: inherit;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .cs-ed-x:hover {
+      background: var(--dsw-alias-bg-layer-2);
+      color: var(--dsw-alias-label-primary);
+    }
+    .cs-ed-token {
+      padding: 1px 5px;
+      border: 1px solid var(--dsw-alias-border-l2);
+      border-radius: 4px;
+      background: var(--dsw-alias-bg-base);
+      color: var(--dsw-alias-label-secondary);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .cs-ed-token:hover {
+      border-color: var(--dsw-alias-brand-primary);
+      color: var(--dsw-alias-brand-primary);
+    }
+    .cs-ed-area {
+      flex: 1;
+      min-width: 0;
+      box-sizing: border-box;
+      padding: 5px 7px;
+      border: 1px solid var(--dsw-alias-border-l2);
+      border-radius: 5px;
+      background: var(--dsw-alias-bg-base);
+      color: inherit;
+      font: inherit;
+      line-height: 1.5;
+      resize: vertical;
+    }
+    .cs-ed-area:focus-visible {
+      border-color: var(--dsw-alias-brand-primary);
+      outline: none;
+    }
+    .cs-ed-select {
+      flex: none;
+      max-width: 132px;
+      padding: 4px 6px;
+      border: 1px solid var(--dsw-alias-border-l2);
+      border-radius: 5px;
+      background: var(--dsw-alias-bg-base);
+      color: inherit;
+      font: inherit;
+      font-size: 12px;
+    }
+    .cs-ed-file {
+      display: none;
+    }
+    .cs-ed-drop {
+      position: absolute;
+      right: 0;
+      left: 0;
+      height: 2px;
+      border-radius: 2px;
+      background: var(--dsw-alias-brand-primary);
+      pointer-events: none;
     }
     .cs-ed-side-empty {
       padding: 12px 0;
@@ -1315,6 +1753,34 @@ window.__ModuleLoader__.load({
     .cs-ed-field:focus {
       outline: 1px solid var(--dsw-alias-brand-primary);
       outline-offset: 2px;
+    }
+    .cs-ed-stage [data-dsh-screenshot-block] {
+      cursor: move;
+      outline: 1px dashed transparent;
+      outline-offset: 1px;
+    }
+    .cs-ed-stage [data-dsh-screenshot-block]:hover {
+      outline-color: var(--dsw-alias-border-l4);
+    }
+    .cs-ed-stage [data-dsh-screenshot-block].cs-ed-sel {
+      outline: 1px solid var(--dsw-alias-brand-primary) !important;
+    }
+    .cs-blk-zone {
+      display: block;
+      min-height: 0;
+    }
+    .cs-blk-empty {
+      margin: 6px 0;
+      padding: 10px 12px;
+      border: 1px dashed var(--dsw-alias-border-l2);
+      border-radius: 6px;
+      color: var(--dsw-alias-label-tertiary);
+      font-size: 12px;
+      text-align: center;
+    }
+    .cs-blk-empty:hover {
+      border-color: var(--dsw-alias-brand-primary);
+      color: var(--dsw-alias-brand-primary);
     }
     .cs-ed-field[data-empty='true']::before {
       content: attr(data-cs-placeholder);
@@ -2404,6 +2870,99 @@ window.__ModuleLoader__.load({
       return found
     }
 
+    // ===== dom/tokens.js =============================================
+
+    /**
+     * What a text block can say about the shot it is part of.
+     *
+     * A template is plain text with `{token}` placeholders; the values are read from the page the capture
+     * is taken from, so the same header describes every conversation instead of repeating one fixed
+     * sentence. Unknown placeholders are left as written: the reader typed them, and silently swallowing
+     * a typo would be worse than showing it.
+     */
+
+
+    /** The first non-empty text found under one of the selectors, trimmed. */
+    function firstText(doc, selectors) {
+      if (doc === null || doc === undefined) return ''
+      for (const selector of selectors) {
+        const element = doc.querySelector(selector)
+        if (element === null) continue
+        const text = (element.textContent ?? '').trim()
+        if (text !== '') return text
+      }
+      return ''
+    }
+
+    /** The conversation's own title: the page title without the application suffix. */
+    function conversationTitle(doc) {
+      if (doc === null || doc === undefined) return ''
+      const raw = (doc.title ?? '').trim()
+      if (raw === '') return ''
+      return raw.replace(/\s+[—–-]\s+DeepSeek Harness\s*$/i, '').trim()
+    }
+
+    /** Zero-padded two-digit field. */
+    function pad(value) {
+      return String(value).padStart(2, '0')
+    }
+
+    /** The application release, when the boot record carries one. */
+    function releaseVersion() {
+      try {
+        const release = globalThis.__DSH_BOOT__?.release
+        return typeof release?.version === 'string' ? release.version : ''
+      } catch {
+        return ''
+      }
+    }
+
+    /**
+     * The values behind the placeholders.
+     *
+     * Everything is read from the live document rather than from host state: the plugin subscribes to no
+     * host service, and the numbers a header needs — how many turns are in the picture, what the
+     * conversation is called, which model answered — are all on screen already.
+     */
+    function tokenValues(doc, now = new Date()) {
+      const turns = doc === null || doc === undefined ? 0 : doc.querySelectorAll('[data-chat-turn]').length
+      const prompts =
+        doc === null || doc === undefined ? 0 : doc.querySelectorAll('[data-chat-flow-kind="user"]').length
+      const model = firstText(doc, ['[data-model-id]'])
+      const sessionRaw =
+        doc === null || doc === undefined
+          ? ''
+          : (doc.querySelector('[data-conversation-session]')?.getAttribute('data-conversation-session') ?? '')
+      return {
+        turns: turns === 0 ? '' : String(turns),
+        prompts: prompts === 0 ? '' : String(prompts),
+        date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+        time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+        weekday: now.toLocaleDateString(undefined, { weekday: 'long' }),
+        title: conversationTitle(doc),
+        model,
+        session: sessionRaw.replace(/^session-/, ''),
+        app: 'DeepSeek Harness',
+        version: releaseVersion(),
+      }
+    }
+
+    /** Replace every `{token}` that has a value, and leave the rest exactly as written. */
+    function renderTemplate(text, values) {
+      if (typeof text !== 'string' || text === '') return ''
+      return text.replace(/\{([a-z_]+)\}/g, (whole, name) => {
+        if (!TEMPLATE_TOKENS.includes(name)) return whole
+        const value = values === null || values === undefined ? undefined : values[name]
+        return typeof value === 'string' && value !== '' ? value : whole
+      })
+    }
+
+    /** Whether a string still carries a placeholder, which is what the editor shows instead of a value. */
+    function hasToken(text) {
+      if (typeof text !== 'string') return false
+      return /\{[a-z_]+\}/.test(text)
+    }
+
     // ===== dom/rules.js ==============================================
 
     /**
@@ -2825,152 +3384,157 @@ window.__ModuleLoader__.load({
     // ===== dom/inserts.js ============================================
 
     /**
-     * The blocks the settings can add above and below the transcript: a title, a subtitle, a footer and
-     * the one metadata line that says how much of the conversation the picture holds.
+     * The picture's own content: the blocks the reader placed above and below the transcript.
      *
      * They are built inside the staged clone, not around it: both renderers read the clone and the SVG
-     * path serializes only that element, so a header mounted next to it would be laid out and then left
-     * out of the picture.
+     * path serializes only that element, so a block mounted next to it would be laid out and then left
+     * out of the picture. Each zone is a wrapper the crop can measure, and each block carries the id it
+     * was placed under, which is what lets the editor select, drag and delete the one under the pointer.
      *
      * Colours are literal greys on purpose. `var(--dsw-alias-*)` resolves in the live page, which is what
      * the hand painter reads, but the serialized SVG document has no theme root to resolve against, so a
      * token here would draw one way through the fallback and another through the main path. A neutral grey
-     * reads on both light and dark transcripts; the body text keeps `color: inherit`, so it follows the
+     * reads on both light and dark transcripts; body text keeps `color: inherit`, so it follows the
      * transcript in either theme.
      */
 
+
     /** Muted copy and hairline rules, chosen to stay legible on a light and on a dark transcript. */
+    const ZONE_ATTRIBUTES = { top: HEAD_ATTRIBUTE, bottom: FOOT_ATTRIBUTE }
+
+    /** One grey that reads the same on both themes; a capture has no theme tokens to resolve. */
     const MUTED = '#8c8c8c'
     const RULE = 'rgba(128, 128, 128, .32)'
 
-    /** Two decimal digits, so a meta line never jumps in width between 9 and 10. */
-    function pad(value) {
-      return String(value).padStart(2, '0')
+    /** The metrics of one text block per size, so a picture keeps one type scale. */
+    const TEXT_STYLE = {
+      title: 'font-size:17px;line-height:24px;font-weight:600;color:inherit;',
+      subtitle: `font-size:13px;line-height:20px;color:${MUTED};`,
+      body: 'font-size:13px;line-height:20px;color:inherit;',
+    }
+
+    /** The zone's own breathing room, and which side of the transcript it hugs. */
+    const ZONE_STYLE = {
+      top: 'padding:0 0 12px;',
+      bottom: 'padding:12px 0 0;',
     }
 
     /**
-     * The values `{date}`, `{time}` and `{turns}` stand for, taken at capture time.
-     * @param {Date} now - the moment the picture is taken.
-     * @param {number} turns - how many exchanges the picture covers.
-     */
-    function insertMeta(now, turns) {
-      return {
-        turns: Math.max(0, Math.round(turns)),
-        date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
-        time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
-      }
-    }
-
-    /** Substitute the placeholders a reader may write into a title or a footer. */
-    function fillTokens(text, meta) {
-      return text
-        .replace(/\{turns\}/g, String(meta.turns))
-        .replace(/\{date\}/g, meta.date)
-        .replace(/\{time\}/g, meta.time)
-    }
-
-    /** The placeholders the meta line substitutes, handed back unchanged so the editor shows the tokens. */
-    const RAW_META = Object.freeze({ turns: '{turns}', date: '{date}', time: '{time}' })
-
-    /**
-     * Turn one block of text into a field the reader can type into, in place.
+     * Turn one element into an editable field, in place.
      *
      * `contenteditable="plaintext-only"` keeps a paste from arriving with markup the picture cannot paint,
      * and the attribute that tags the field is also what the overlay listens for when it writes the value
      * back. An empty field carries its hint in an attribute, so CSS can draw it and `textContent` stays
      * empty: the saved value is never the hint.
      */
-    function editable(doc, node, field, placeholder) {
+    function editable(doc, node, id, placeholder) {
       node.setAttribute('contenteditable', 'plaintext-only')
       node.setAttribute('spellcheck', 'false')
-      node.setAttribute(FIELD_ATTRIBUTE, field)
+      node.setAttribute(FIELD_ATTRIBUTE, id)
       node.setAttribute('data-cs-placeholder', placeholder)
       node.classList.add('cs-ed-field')
       if (node.textContent === '') node.setAttribute('data-empty', 'true')
       return node
     }
 
-    /** One block of text with the geometry both renderers agree on. */
-    function paragraph(doc, text, style, align) {
-      const node = doc.createElement('div')
-      node.textContent = text
-      node.style.cssText = `display:block;text-align:${align};white-space:pre-wrap;word-break:break-word;${style}`
-      return node
+    /** One block, drawn the way both renderers will see it. Null when a capture has nothing to draw. */
+    function renderBlock(doc, block, values, labels) {
+      const edit = labels === null ? null : labels
+      const shell = doc.createElement('div')
+      shell.setAttribute(BLOCK_ATTRIBUTE, block.id)
+      shell.className = `cs-blk cs-blk-${block.kind}`
+      shell.style.cssText = 'display:block;box-sizing:border-box;'
+
+      if (block.kind === 'spacer') {
+        shell.style.height = `${block.height}px`
+        if (edit !== null) {
+          shell.classList.add('cs-blk-space')
+          shell.appendChild(doc.createTextNode(''))
+        }
+        return shell
+      }
+
+      if (block.kind === 'divider') {
+        shell.style.cssText += `border-top:1px solid ${RULE};height:0;`
+        if (edit !== null) shell.classList.add('cs-blk-space')
+        return shell
+      }
+
+      if (block.kind === 'image') {
+        if (block.src === '') {
+          if (edit === null) return null
+          shell.classList.add('cs-blk-empty')
+          shell.setAttribute('data-cs-placeholder', labels.image)
+          shell.style.cssText += 'padding:18px 0;text-align:center;'
+          return shell
+        }
+        const image = doc.createElement('img')
+        image.src = block.src
+        image.style.cssText = `display:block;width:${block.width}%;height:auto;margin:0 auto;`
+        shell.appendChild(image)
+        return shell
+      }
+
+      if (block.kind === 'meta') {
+        const line = translate('insert.meta', {
+          turns: values.turns === '' ? '—' : values.turns,
+          date: values.date,
+          time: values.time,
+        })
+        shell.style.cssText += `${TEXT_STYLE.subtitle}text-align:${block.align ?? 'left'};`
+        shell.textContent = line
+        return shell
+      }
+
+      const text = edit === null ? renderTemplate(block.text, values) : block.text
+      if (edit === null && text === '') return null
+      shell.style.cssText += `${TEXT_STYLE[block.size]}text-align:${block.align};white-space:pre-wrap;word-break:break-word;`
+      shell.textContent = text
+      return edit === null ? shell : editable(doc, shell, block.id, labels.text)
     }
 
     /**
-     * The header block, or null when the reader asked for neither a title nor a subtitle.
+     * One zone: the blocks that live above or below the transcript, in the order they were placed.
      *
-     * In edit mode the block is always built, even with both fields empty: the reader needs a place to
-     * click before there is anything to show, and the capture path never sees that empty box.
-     *
-     * @param edit - `{ title, subtitle }` placeholders, or null for the capture.
+     * A capture drops the whole wrapper when the zone holds nothing; the edit surface always builds it,
+     * because an empty zone is where a dragged block lands.
      */
-    function buildHead(doc, options, meta, edit = null) {
-      const title = fillTokens(options.title, meta)
-      const subtitle = fillTokens(options.subtitle, meta)
-      if (edit === null && title === '' && subtitle === '') return null
-      const box = doc.createElement('div')
-      box.setAttribute(HEAD_ATTRIBUTE, 'true')
-      box.style.cssText =
-        `display:block;box-sizing:border-box;padding:2px 0 ${options.divider ? 16 : 12}px;` +
-        `text-align:${options.align};` +
-        (options.divider ? `border-bottom:1px solid ${RULE};` : '')
-      if (title !== '' || edit !== null) {
-        const node = paragraph(doc, title, 'font-size:17px;line-height:24px;font-weight:600;color:inherit;', options.align)
-        box.appendChild(edit === null ? node : editable(doc, node, 'title', edit.title))
+    function buildZone(doc, zone, options, values, labels = null) {
+      const edit = labels === null ? null : labels
+      const held = options.blocks.filter((block) => block.zone === zone)
+      if (edit === null && held.length === 0) return null
+      const wrapper = doc.createElement('div')
+      wrapper.setAttribute(ZONE_ATTRIBUTE, zone)
+      wrapper.setAttribute(ZONE_ATTRIBUTES[zone], 'true')
+      wrapper.className = `cs-blk-zone cs-blk-zone-${zone}`
+      wrapper.style.cssText = `display:block;box-sizing:border-box;${ZONE_STYLE[zone]}`
+      let painted = 0
+      for (const block of held) {
+        const node = renderBlock(doc, block, values, labels)
+        if (node === null) continue
+        wrapper.appendChild(node)
+        painted += 1
       }
-      if (subtitle !== '' || edit !== null) {
-        const node = paragraph(
-          doc,
-          subtitle,
-          `margin-top:4px;font-size:13px;line-height:20px;color:${MUTED};`,
-          options.align,
-        )
-        box.appendChild(edit === null ? node : editable(doc, node, 'subtitle', edit.subtitle))
+      if (edit !== null && painted === 0) {
+        wrapper.classList.add('cs-blk-zone-empty')
+        wrapper.setAttribute('data-cs-placeholder', labels.zone)
       }
-      return box
+      return wrapper
     }
 
     /**
-     * The footer block, or null when the reader asked for neither a footer nor the metadata line.
-     * @param edit - `{ footer }` placeholder, or null for the capture.
-     */
-    function buildFoot(doc, options, meta, edit = null) {
-      const footer = fillTokens(options.footer, meta)
-      if (edit === null && footer === '' && !options.showMeta) return null
-      const box = doc.createElement('div')
-      box.setAttribute(FOOT_ATTRIBUTE, 'true')
-      box.style.cssText =
-        `display:block;box-sizing:border-box;padding:${options.divider ? 16 : 12}px 0 2px;` +
-        `text-align:${options.align};` +
-        (options.divider ? `border-top:1px solid ${RULE};` : '')
-      if (footer !== '' || edit !== null) {
-        const node = paragraph(doc, footer, 'font-size:13px;line-height:20px;color:inherit;', options.align)
-        box.appendChild(edit === null ? node : editable(doc, node, 'footer', edit.footer))
-      }
-      if (options.showMeta) {
-        const meta1 = translate('insert.meta', { turns: meta.turns, date: meta.date, time: meta.time })
-        box.appendChild(
-          paragraph(doc, meta1, `margin-top:4px;font-size:12px;line-height:18px;color:${MUTED};`, options.align),
-        )
-      }
-      return box
-    }
-
-    /**
-     * Put both blocks in place inside the clone and hand them back for measuring.
+     * Put both zones in place inside the clone and hand them back for measuring.
      *
-     * @param edit - `{ title, subtitle, footer }` placeholders when the clone is the edit surface, null
-     *   for a capture.
+     * @param values - the token values for this capture, from `tokenValues`.
+     * @param labels - the edit surface's placeholders, or null for a capture.
      * @returns {{ head: Element | null, foot: Element | null }}
      */
-    function insertBlocks(clone, options, meta, edit = null) {
+    function insertBlocks(clone, options, values, labels = null) {
       const flow =
         (clone.hasAttribute(SCROLL_ATTRIBUTE) ? clone : clone.querySelector(`[${SCROLL_ATTRIBUTE}]`)) ?? clone
       const doc = clone.ownerDocument
-      const head = buildHead(doc, options, meta, edit)
-      const foot = buildFoot(doc, options, meta, edit)
+      const head = buildZone(doc, 'top', options, values, labels)
+      const foot = buildZone(doc, 'bottom', options, values, labels)
       if (head !== null) flow.insertBefore(head, flow.firstChild)
       if (foot !== null) flow.appendChild(foot)
       return { head, foot }
@@ -3250,7 +3814,7 @@ window.__ModuleLoader__.load({
         // The reader's own header and footer go in after the band is pruned, so a one-turn capture carries
         // them too, and inside the clone, so the SVG serializer sees them.
         const turns = clone.querySelectorAll(`[${TURN_ATTRIBUTE}]`).length
-        const blocks = insertBlocks(clone, options, insertMeta(new Date(), turns))
+        const blocks = insertBlocks(clone, options, { ...tokenValues(doc), turns: String(turns) })
         clone.style.setProperty('width', `${width}px`)
         // `width` has to mean the outer box. The app surface's padding is part of `clientWidth`, so
         // under `content-box` the clone grew by its own horizontal padding, which pushed the transcript
@@ -3491,7 +4055,9 @@ window.__ModuleLoader__.load({
       dropSkipped(clone)
       const applied = applyRules(clone, options)
       const turns = clone.querySelectorAll(`[${TURN_ATTRIBUTE}]`).length
-      const blocks = insertBlocks(clone, options, { ...RAW_META, turns }, labels)
+      // The edit surface shows the templates as written: a header has to stay editable, so `{date}` here
+      // is the placeholder rather than the day it would print.
+      const blocks = insertBlocks(clone, options, { ...tokenValues(doc), turns: String(turns) }, labels)
 
       clone.style.setProperty('width', `${width}px`)
       clone.style.setProperty('box-sizing', 'border-box')
@@ -3783,28 +4349,13 @@ window.__ModuleLoader__.load({
       )
     }
 
-    // ===== views/editor.js ===========================================
+    // ===== views/editor-labels.js ====================================
 
     /**
-     * The edit surface, as a component.
-     *
-     * Two layers meet here. The frame, the inspector and the lists are React; the picture between them is
-     * an element tree built imperatively by `dom/stage.js` — the same clone a capture renders, laid out at
-     * full length. That split is deliberate: the clone has to be a copy of the live application, so it is
-     * cloned from the DOM and handed to a container ref, while everything around it is ordinary UI.
-     *
-     * The surface is a small inspector rather than a form. Any element in the copy can be picked, named,
-     * hidden or restyled, because a transcript is a web page and the parts worth dropping are not knowable
-     * in advance: a host release adds rows, and another plugin paints its own. What the reader changed is
-     * kept as a rule — a selector plus declarations — and the capture runs the same rules over the same
-     * kind of copy, so the picture is what the surface showed.
-     *
-     * Hiding never deletes the element: it keeps its place in the copy with no box. That is what lets the
-     * list at the bottom point at the hole and put the element back.
+     * The words this surface prints: the built-in names, the preset names, and the one-line summary of
+     * an element. They live apart from the component so the inspector and the palette can share them.
      */
 
-
-    /** The name of one built-in piece, for a chip and for the menu row. */
     function pieceLabel(t, id) {
       if (id === 'nav') return t('settings.piece.nav')
       if (id === 'attachments') return t('settings.piece.attachments')
@@ -3814,12 +4365,10 @@ window.__ModuleLoader__.load({
       if (id === 'handles') return t('settings.piece.handles')
       if (id === 'paging') return t('settings.piece.paging')
       if (id === 'composer') return t('settings.piece.composer')
-      if (id === 'divider') return t('settings.piece.divider')
-      if (id === 'meta') return t('settings.piece.meta')
       return id
     }
 
-    /** The name of one style bundle. */
+    /** One style preset, named by translation. */
     function presetLabel(t, id) {
       if (id === 'dim') return t('settings.editor.preset.dim')
       if (id === 'mark') return t('settings.editor.preset.mark')
@@ -3830,28 +4379,618 @@ window.__ModuleLoader__.load({
       return id
     }
 
-    /** One line in the hidden list: a built-in piece or a rule the reader wrote. */
-    function entryLabel(t, entry, options) {
-      if (entry.kind === 'piece') return pieceLabel(t, entry.id)
-      const rule = ruleFor(options, entry.selector)
-      const name = rule === null ? entry.name : rule.name
-      return name === '' ? entry.selector : name
+    /** A piece option ("hideClock") and its piece id ("clock") name the same part. */
+    function pieceOfOption(option) {
+      const bare = option.startsWith('hide') ? option.slice(4) : option
+      return bare.charAt(0).toLowerCase() + bare.slice(1)
     }
 
-    /** The conversation the reader is looking at, or null when none is mounted. */
-    function findConversation() {
-      if (typeof document === 'undefined') return null
-      const scroller = document.querySelector(`[${SCROLL_ATTRIBUTE}]`)
-      return scroller instanceof Element && scroller.clientWidth > 0 ? scroller : null
+    /** The name of one hidden entry: a saved rule's name, or the built-in piece's label. */
+    function entryLabel(t, entry) {
+      const rule = ruleFor(readOptions(), entry.selector)
+      const name = rule === null ? entry.name : rule.name
+      const label = name === '' ? '' : name
+      if (entry.kind === 'piece') return pieceLabel(t, pieceOfOption(entry.option))
+      return label === '' ? entry.selector : label
+    }
+
+    /** The block kinds the palette offers, with the label and a one-line description of each. */
+    function kindLabel(t, kind) {
+      if (kind === 'text') return t('settings.editor.block.text')
+      if (kind === 'spacer') return t('settings.editor.block.spacer')
+      if (kind === 'image') return t('settings.editor.block.image')
+      if (kind === 'divider') return t('settings.editor.block.divider')
+      if (kind === 'meta') return t('settings.editor.block.meta')
+      return kind
+    }
+
+    /** The size names a text block offers. */
+    function sizeLabel(t, size) {
+      if (size === 'title') return t('settings.editor.block.sizeTitle')
+      if (size === 'subtitle') return t('settings.editor.block.sizeSubtitle')
+      return t('settings.editor.block.sizeBody')
+    }
+
+    /** The conversation the surface is placed over, or null. */
+    /**
+     * Tag, attributes and text of one element of the copy, for the inspector's summary line.
+     */
+    /**
+     * The element under the pointer, as a line the inspector can print: the opening tag with its own
+     * markers, the start of its text, and how many children it has. Punctuation and numbers only, so the
+     * line reads the same in every language.
+     */
+    function describeSelected(clone, selector) {
+      const node = clone.querySelector(selector)
+      if (node === null) return null
+      const info = describeElement(node)
+      const attrs = Object.entries(info.attrs)
+        .map(([name, value]) => (value === '' ? name : `${name}="${value}"`))
+        .join(' ')
+      const head = attrs === '' ? `<${info.tag}>` : `<${info.tag} ${attrs}>`
+      return `${head} · ${info.text === '' ? '—' : info.text} · ${info.children}`
+    }
+
+    // ===== views/editor-drag.js ======================================
+
+    /**
+     * Dragging a block into the picture.
+     *
+     * The payload rides on dataTransfer, but a drag that starts inside the overlay cannot always read it
+     * back, so the last payload is also kept here.
+     */
+
+    const ZONES = ['top', 'bottom']
+
+    /**
+     * Where a dragged block would land.
+     *
+     * The pointer decides the zone and the position inside it: above the middle of the copy is the zone
+     * above the transcript, below it is the one under it, and inside a zone the block lands between the
+     * blocks whose centre the pointer has passed. Both are read from the copy in the document, so the same
+     * answer holds whether the pointer came from the palette or from another block.
+     */
+    function dropTarget(clone, host, clientY) {
+      if (host === null) return null
+      const box = clone.getBoundingClientRect()
+      if (box.height < 1) return null
+      // The indicator is drawn inside the overlay, so the position is expressed in the overlay's frame.
+      const wrap = host.parentElement
+      const wrapBox = (wrap ?? host).getBoundingClientRect()
+      const zone = clientY < box.top + box.height / 2 ? 'top' : 'bottom'
+      const wrapper = clone.querySelector(`[${ZONE_ATTRIBUTE}="${zone}"]`)
+      const blocks = wrapper === null ? [] : Array.from(wrapper.querySelectorAll(`[${BLOCK_ATTRIBUTE}]`))
+      let index = 0
+      let line = wrapper === null ? box.top + (zone === 'top' ? 0 : box.height) : wrapper.getBoundingClientRect().top
+      for (const node of blocks) {
+        const rect = node.getBoundingClientRect()
+        line = rect.top
+        if (clientY > rect.top + rect.height / 2) {
+          index += 1
+          line = rect.bottom
+        } else break
+      }
+      return { zone, index, y: Math.round(line - wrapBox.top) }
+    }
+
+    /** The payload a drag carries. */
+    const BLOCK_PAYLOAD = 'application/x-cs-block'
+    let dragging = null
+
+    /**
+     * The overlay.
+     */
+    /**
+     * The payload of the drag that is in flight.
+     */
+    function readDrag() {
+      return dragging
     }
 
     /**
-     * Where the conversation sits on screen.
-     *
-     * The surface covers the conversation, not the window: a frameless window draws its own title bar and
-     * its own window buttons over the page, and a surface that started at the top of the viewport would
-     * put the bar under the buttons and let the title bar show through it.
+     * Replace the payload of the drag that is in flight. One slot is enough: only one drag can run.
      */
+    function writeDrag(payload) {
+      dragging = payload
+    }
+
+    // ===== views/editor-rows.js ======================================
+
+    /**
+     * One labelled menu of a few values, built from the host's own components: the row every choice in
+     * the inspector is made of.
+     */
+
+    function menuRow(props) {
+      const [open, setOpen] = useState(false)
+      const { Menu, Button, label, value, values } = props
+      const nameOf = props.name === undefined ? (entry) => entry : props.name
+      const current = values.includes(value) ? value : values[0]
+      return h(
+        'div',
+        { className: 'cs-ed-row' },
+        h('span', { className: 'cs-ed-label' }, label),
+        h(Button, { variant: 'outline', size: 'sm', onClick: () => setOpen(true) }, nameOf(current)),
+        h(Menu, {
+          open,
+          align: 'end',
+          side: 'bottom',
+          selectedId: current,
+          items: values.map((entry) => ({ id: entry, label: nameOf(entry) })),
+          onSelect: (id) => {
+            setOpen(false)
+            props.onSelect(id)
+          },
+          onClose: () => setOpen(false),
+        }),
+      )
+    }
+
+    // ===== views/editor-inspector.js =================================
+
+    /**
+     * The two inspectors of the edit surface: one element of the copy, or one content block.
+     *
+     * Both are pure. The state they edit and the callbacks that write it arrive as props, so the surface
+     * decides what a change means and these decide only how it looks.
+     */
+
+    function elementInspector(props) {
+      const { t, selection, rule, detail, styleKeys, attrKeys, Switch, Button } = props
+      return h(
+        'div',
+        { className: 'cs-ed-side' },
+        h(
+          'div',
+          { className: 'cs-ed-side-head' },
+          h('span', { className: 'cs-ed-side-tag' }, selection.tag),
+          h('span', { className: 'cs-ed-side-text' }, selection.text),
+        ),
+        h('div', { className: 'cs-ed-mono' }, selection.selector),
+        h(
+          'div',
+          { className: 'cs-ed-row' },
+          h('span', { className: 'cs-ed-label' }, t('settings.editor.side.hide')),
+          h(Switch, {
+            checked: rule !== null && rule.hide === true,
+            onChange: () => props.onHide(),
+          }),
+        ),
+        h(
+          'label',
+          { className: 'cs-ed-field-row' },
+          h('span', { className: 'cs-ed-label' }, t('settings.editor.side.name')),
+          h('input', {
+            className: 'cs-ed-input',
+            defaultValue: rule === null ? selection.text : rule.name,
+            key: `name:${selection.selector}:${rule === null ? '' : rule.name}`,
+            onBlur: (event) => props.onRename(event.currentTarget.value),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter') event.currentTarget.blur()
+            },
+          }),
+        ),
+        h(
+          'div',
+          { className: 'cs-ed-presets' },
+          ...RULE_PRESETS.map((preset) =>
+            h(
+              Button,
+              { key: preset.id, variant: 'outline', size: 'sm', onClick: () => props.onPreset(preset) },
+              presetLabel(t, preset.id),
+            ),
+          ),
+        ),
+        h('span', { className: 'cs-ed-label' }, t('settings.editor.side.style')),
+        ...styleKeys.map((prop) =>
+          h(
+            'div',
+            { key: `style:${prop}`, className: 'cs-ed-row' },
+            h('span', { className: 'cs-ed-prop' }, prop),
+            h('input', {
+              className: 'cs-ed-input',
+              defaultValue: rule.style[prop],
+              key: `style:${prop}:${rule.style[prop]}`,
+              onBlur: (event) => props.onStyle(prop, event.currentTarget.value),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') event.currentTarget.blur()
+              },
+            }),
+            h(
+              'button',
+              { type: 'button', className: 'cs-ed-x', title: t('settings.editor.side.remove'), onClick: () => props.onStyle(prop, '') },
+              '×',
+            ),
+          ),
+        ),
+        h(
+          'div',
+          { className: 'cs-ed-row' },
+          h(
+            'select',
+            {
+              className: 'cs-ed-select',
+              value: props.draftProp,
+              onChange: (event) => props.setDraftProp(event.currentTarget.value),
+            },
+            ...STYLE_PROPS.map((prop) => h('option', { key: prop, value: prop }, prop)),
+          ),
+          h('input', {
+            className: 'cs-ed-input',
+            placeholder: t('settings.editor.side.value'),
+            value: props.draftValue,
+            onChange: (event) => props.setDraftValue(event.currentTarget.value),
+            onKeyDown: (event) => {
+              if (event.key !== 'Enter') return
+              props.onStyle(props.draftProp, props.draftValue)
+              props.setDraftValue('')
+            },
+          }),
+          h(
+            Button,
+            {
+              variant: 'outline',
+              size: 'sm',
+              onClick: () => {
+                props.onStyle(props.draftProp, props.draftValue)
+                props.setDraftValue('')
+              },
+            },
+            t('settings.editor.side.add'),
+          ),
+        ),
+        h('span', { className: 'cs-ed-label' }, t('settings.editor.side.attrs')),
+        ...attrKeys.map((name) =>
+          h(
+            'div',
+            { key: `attr:${name}`, className: 'cs-ed-row' },
+            h('span', { className: 'cs-ed-prop' }, name),
+            h('input', {
+              className: 'cs-ed-input',
+              defaultValue: rule.attrs[name] === null ? '' : rule.attrs[name],
+              key: `attr:${name}:${rule.attrs[name] === null ? '' : rule.attrs[name]}`,
+              onBlur: (event) => props.onAttr(name, event.currentTarget.value),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') event.currentTarget.blur()
+              },
+            }),
+            h(
+              'button',
+              { type: 'button', className: 'cs-ed-x', title: t('settings.editor.side.remove'), onClick: () => props.onAttr(name, '') },
+              '×',
+            ),
+          ),
+        ),
+        h(
+          'div',
+          { className: 'cs-ed-row' },
+          h('input', {
+            className: 'cs-ed-input',
+            placeholder: t('settings.editor.side.attrName'),
+            value: props.draftAttr,
+            onChange: (event) => props.setDraftAttr(event.currentTarget.value),
+          }),
+          h('input', {
+            className: 'cs-ed-input',
+            placeholder: t('settings.editor.side.value'),
+            value: props.draftAttrValue,
+            onChange: (event) => props.setDraftAttrValue(event.currentTarget.value),
+            onKeyDown: (event) => {
+              if (event.key !== 'Enter') return
+              props.onAttr(props.draftAttr, props.draftAttrValue)
+              props.setDraftAttrValue('')
+            },
+          }),
+          h(
+            Button,
+            {
+              variant: 'outline',
+              size: 'sm',
+              onClick: () => {
+                props.onAttr(props.draftAttr, props.draftAttrValue)
+                props.setDraftAttrValue('')
+              },
+            },
+            t('settings.editor.side.add'),
+          ),
+        ),
+        detail === null ? null : h('div', { className: 'cs-ed-note' }, detail),
+        h('div', { className: 'cs-ed-note' }, t('settings.editor.side.ruleNote')),
+        h(
+          'div',
+          { className: 'cs-ed-row' },
+          h(
+            Button,
+            { variant: 'ghost', size: 'sm', onClick: () => props.onRemoveRule() },
+            t('settings.editor.removeRule'),
+          ),
+        ),
+      )
+    }
+
+    /** The inspector for one block: its content, its geometry, and the way it leaves again. */
+    function blockInspector(props) {
+      const { t, block, Button, Menu, fileRef } = props
+      const zoneName = block.zone === 'top' ? t('settings.editor.zone.top') : t('settings.editor.zone.bottom')
+      const rows = [
+        h(
+          'div',
+          { className: 'cs-ed-side-head' },
+          h('span', { className: 'cs-ed-side-tag' }, block.kind),
+          h('span', { className: 'cs-ed-side-text' }, zoneName),
+        ),
+      ]
+
+      if (block.kind === 'text') {
+        rows.push(
+          h(
+            'label',
+            { className: 'cs-ed-field-row' },
+            h('span', { className: 'cs-ed-label' }, t('settings.editor.block.text')),
+            h('textarea', {
+              className: 'cs-ed-area',
+              rows: 3,
+              defaultValue: block.text,
+              key: `text:${block.id}:${block.text}`,
+              placeholder: t('settings.editor.block.textHint'),
+              onBlur: (event) => props.onPatch({ text: event.currentTarget.value }),
+            }),
+          ),
+          h(menuRow, {
+            key: 'size',
+            Menu,
+            Button,
+            label: t('settings.editor.block.size'),
+            value: block.size,
+            values: TEXT_SIZES,
+            name: (size) => sizeLabel(t, size),
+            onSelect: (value) => props.onPatch({ size: value }),
+          }),
+          h(menuRow, {
+            key: 'align',
+            Menu,
+            Button,
+            label: t('settings.editor.block.align'),
+            value: block.align,
+            values: ['left', 'center'],
+            name: (value) => (value === 'center' ? t('settings.editor.align.center') : t('settings.editor.align.left')),
+            onSelect: (value) => props.onPatch({ align: value }),
+          }),
+        )
+      }
+
+      if (block.kind === 'spacer') {
+        rows.push(
+          h(
+            'label',
+            { className: 'cs-ed-field-row' },
+            h('span', { className: 'cs-ed-label' }, t('settings.editor.block.height')),
+            h('input', {
+              className: 'cs-ed-input',
+              type: 'number',
+              min: '4',
+              max: '240',
+              defaultValue: String(block.height),
+              key: `height:${block.id}:${block.height}`,
+              onBlur: (event) => props.onPatch({ height: Number(event.currentTarget.value) }),
+            }),
+          ),
+        )
+      }
+
+      if (block.kind === 'image') {
+        rows.push(
+          h(
+            'div',
+            { className: 'cs-ed-row' },
+            h(
+              Button,
+              { variant: 'outline', size: 'sm', onClick: () => fileRef.current?.click() },
+              block.src === '' ? t('settings.editor.block.imagePick') : t('settings.editor.block.imageChange'),
+            ),
+            h('input', {
+              ref: fileRef,
+              type: 'file',
+              accept: 'image/*',
+              className: 'cs-ed-file',
+              onChange: props.onPickImage,
+            }),
+          ),
+          h(
+            'label',
+            { className: 'cs-ed-field-row' },
+            h('span', { className: 'cs-ed-label' }, t('settings.editor.block.width')),
+            h('input', {
+              className: 'cs-ed-input',
+              type: 'number',
+              min: '10',
+              max: '100',
+              defaultValue: String(block.width),
+              key: `width:${block.id}:${block.width}`,
+              onBlur: (event) => props.onPatch({ width: Number(event.currentTarget.value) }),
+            }),
+          ),
+        )
+      }
+
+      rows.push(
+        h(
+          'label',
+          { className: 'cs-ed-field-row' },
+          h('span', { className: 'cs-ed-label' }, t('settings.editor.block.saveName')),
+          h(
+            'div',
+            { className: 'cs-ed-row' },
+            h('input', {
+              className: 'cs-ed-input',
+              placeholder: block.kind,
+              value: props.customName,
+              onChange: (event) => props.onCustomName(event.currentTarget.value),
+            }),
+            h(Button, { variant: 'outline', size: 'sm', onClick: () => props.onSaveCustom() }, t('settings.editor.block.save')),
+          ),
+        ),
+        h(
+          'div',
+          { className: 'cs-ed-row' },
+          h(Button, { variant: 'ghost', size: 'sm', onClick: () => props.onRemove() }, t('settings.editor.block.delete')),
+        ),
+      )
+
+      return h('div', { className: 'cs-ed-side' }, ...rows)
+    }
+
+    // ===== views/editor-library.js ===================================
+
+    /**
+     * The palette: the five built-in shapes, the components the user saved, and the variables a text
+     * block can print. Every entry is draggable and also clickable, so it works without a mouse.
+     */
+
+    /**
+     * Build the palette.
+     * @param props - t, options, blockSelection, onAdd(kind, shape), onDropCustom(id), onToken(name),
+     *   onDrag(payload).
+     */
+    function libraryView(props) {
+      const { t, options, blockSelection, onAdd, onDrag, onToken, onDropCustom } = props
+      const library = h(
+        'div',
+        { className: 'cs-ed-lib' },
+        h('div', { className: 'cs-ed-lead-row' }, h('span', { className: 'cs-ed-label' }, t('settings.editor.library'))),
+        h(
+          'div',
+          { className: 'cs-ed-chips' },
+          ...['text', 'spacer', 'image', 'divider', 'meta'].map((kind) =>
+            h(
+              'button',
+              {
+                key: kind,
+                type: 'button',
+                className: 'cs-ed-add',
+                draggable: 'true',
+                title: t('settings.editor.block.dragHint'),
+                onDragStart: (event) => {
+                  onDrag({ id: null, block: { kind } })
+                  if (event.dataTransfer !== null && event.dataTransfer !== undefined) {
+                    event.dataTransfer.effectAllowed = 'copy'
+                    try {
+                      event.dataTransfer.setData(BLOCK_PAYLOAD, JSON.stringify({ kind }))
+                    } catch {
+                      // Same as above: the module-level payload is what the drop reads.
+                    }
+                  }
+                },
+                onDragEnd: () => {
+                  onDrag(null)
+                },
+                onClick: () => onAdd(kind),
+              },
+              kindLabel(t, kind),
+            ),
+          ),
+        ),
+        options.custom.length === 0
+          ? null
+          : h(
+              'div',
+              { className: 'cs-ed-customs' },
+              ...options.custom.map((entry) =>
+                h(
+                  'span',
+                  { key: entry.id, className: 'cs-ed-add cs-ed-add-custom' },
+                  h(
+                    'span',
+                    {
+                      className: 'cs-ed-add-name',
+                      draggable: 'true',
+                      title: t('settings.editor.block.dragHint'),
+                      onDragStart: (event) => {
+                        onDrag({ id: null, block: entry.block })
+                        if (event.dataTransfer !== null && event.dataTransfer !== undefined) {
+                          event.dataTransfer.effectAllowed = 'copy'
+                          try {
+                            event.dataTransfer.setData(BLOCK_PAYLOAD, JSON.stringify({ kind: entry.block.kind }))
+                          } catch {
+                            // The module-level payload is authoritative.
+                          }
+                        }
+                      },
+                      onDragEnd: () => {
+                        onDrag(null)
+                      },
+                      onClick: () => onAdd(entry.block.kind, entry.block),
+                    },
+                    entry.name,
+                  ),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'cs-ed-x',
+                      title: t('settings.editor.block.dropCustom'),
+                      onClick: () => onDropCustom(entry.id),
+                    },
+                    '×',
+                  ),
+                ),
+              ),
+            ),
+        h('div', { className: 'cs-ed-hintline' }, t('settings.editor.tokensHint')),
+        h(
+          'div',
+          { className: 'cs-ed-chips' },
+          ...TEMPLATE_TOKENS.map((name) =>
+            h(
+              'button',
+              {
+                key: name,
+                type: 'button',
+                className: 'cs-ed-token',
+                disabled: blockSelection === null || blockSelection.kind !== 'text',
+                onClick: () => onToken(name),
+              },
+              `{${name}}`,
+            ),
+          ),
+        ),
+        options.custom.length >= MAX_CUSTOM ? h('div', { className: 'cs-ed-hintline' }, t('settings.editor.block.customFull')) : null,
+      )
+
+      return library
+    }
+
+    // ===== views/editor.js ===========================================
+
+    /**
+     * The edit surface: the picture, editable where it is drawn.
+     *
+     * The overlay stands in the conversation's own place. It shows the very clone a capture renders — the
+     * same rules, the same blocks, the same tokens — laid out at full length in a scrolling frame, so what
+     * the reader arranges is what the camera will produce.
+     *
+     * Two things are selectable, and each has its own half of the tray:
+     *
+     * - An element of the copy. Click to select, double-click to hide or restore, right-click for the
+     *   switches that have no element of their own. The inspector names it, mints a selector for it and
+     *   edits its style and attributes.
+     * - A block of the picture's own content. It is dragged in from the library, dragged around inside its
+     *   zone, edited in the inspector and deleted when it is no longer wanted.
+     *
+     * The copy is rebuilt on `revision` alone: a rule or a block changes the drawn picture, so the copy is
+     * made again, while typing into a block leaves the copy alone — rebuilding on every keystroke would
+     * take the caret with it.
+     */
+
+
+    /** The names the built-in pieces answer to, so a hidden one still reads as something. */
+    function findConversation() {
+      const scroller = document.querySelector(`[${SCROLL_ATTRIBUTE}]`)
+      if (!(scroller instanceof HTMLElement) || scroller.clientWidth < 1) return null
+      return scroller
+    }
+
+    /** The rectangle the conversation occupies, so the surface sits exactly over it. */
     function paneRect() {
       const scroller = findConversation()
       if (scroller === null) return null
@@ -3865,23 +5004,33 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /** Blur on Enter, so a field commits and the keyboard goes back to the picture. */
-    function commitOnEnter(event) {
-      if (event.key === 'Enter') {
-        event.preventDefault()
-        event.currentTarget.blur()
+    /**
+     * A crash inside the surface must not leave a blank screen over the conversation: the boundary keeps
+     * the overlay, prints what broke, and the reader can close it and carry on.
+     */
+    class SurfaceBoundary extends react.Component {
+      constructor(props) {
+        super(props)
+        this.state = { error: null }
+      }
+
+      static getDerivedStateFromError(error) {
+        return { error }
+      }
+
+      render() {
+        if (this.state.error === null) return this.props.children
+        const message = String(this.state.error && this.state.error.message ? this.state.error.message : this.state.error)
+        return h('div', { className: 'cs-ed-crash' }, message)
       }
     }
 
-    /**
-     * The overlay.
-     *
-     * `revision` is the only thing that rebuilds the copy: a rule change changes the drawn picture, so the
-     * copy is made again, while typing into an inserted field leaves the copy alone — the typed text is
-     * already in it, and rebuilding on every keystroke would take the caret with it. The inspector keeps
-     * its own drafts for the same reason.
-     */
-    function CaptureEditor({ onClose }) {
+    /** The edit surface, behind a boundary so one bad render still says what broke. */
+    function CaptureEditor(props) {
+      return h(SurfaceBoundary, null, h(CaptureSurface, props))
+    }
+    /** The two zones, in the order the tray lists them. */
+    function CaptureSurface({ onClose }) {
       const t = useTranslate()
       const options = useOptions()
       const hostRef = useRef(null)
@@ -3890,6 +5039,7 @@ window.__ModuleLoader__.load({
       const hitRef = useRef(null)
       const pickRef = useRef(false)
       const selectionRef = useRef(null)
+      const fileRef = useRef(null)
       const [revision, setRevision] = useState(0)
       const [pane, setPane] = useState(paneRect)
       const [missing, setMissing] = useState(false)
@@ -3897,19 +5047,21 @@ window.__ModuleLoader__.load({
       const [selection, setSelection] = useState(null)
       const [pick, setPick] = useState(false)
       const [menu, setMenu] = useState(null)
+      const [drag, setDrag] = useState(null)
       const [draftProp, setDraftProp] = useState(STYLE_PROPS[0])
       const [draftValue, setDraftValue] = useState('')
       const [draftAttr, setDraftAttr] = useState('')
       const [draftAttrValue, setDraftAttrValue] = useState('')
+      const [customName, setCustomName] = useState('')
 
       pickRef.current = pick
       selectionRef.current = selection
 
       const labels = useMemo(
         () => ({
-          title: t('settings.edit.title'),
-          subtitle: t('settings.edit.subtitle'),
-          footer: t('settings.edit.footer'),
+          text: t('settings.editor.block.textHint'),
+          image: t('settings.editor.block.imageHint'),
+          zone: t('settings.editor.block.zoneHint'),
         }),
         [t],
       )
@@ -3924,9 +5076,9 @@ window.__ModuleLoader__.load({
         }
         setMissing(false)
         const stage = buildStage(anchor, readOptions(), {
-          title: String(labels.title),
-          subtitle: String(labels.subtitle),
-          footer: String(labels.footer),
+          text: String(labels.text),
+          image: String(labels.image),
+          zone: String(labels.zone),
         })
         stageRef.current = stage
         setEntries(stage.entries)
@@ -3936,8 +5088,8 @@ window.__ModuleLoader__.load({
           // Only now does the copy have boxes: a detached tree measures as zero and the frame would
           // collapse to nothing, so the band is cut after mounting.
           stage.frame()
-          // The copy is as wide as the picture; the inspector side panel takes width away from the host.
-          // Shrinking with `zoom` keeps the copy's own layout intact, so what is shown is still the picture.
+          // The tray sits under the picture rather than beside it, so the copy keeps the width it will be
+          // captured at; the frame is narrowed only when the window is narrower than the picture.
           const frame = stage.frameElement
           frame.style.zoom = ''
           const width = frame.getBoundingClientRect().width
@@ -3962,25 +5114,47 @@ window.__ModuleLoader__.load({
 
         const elementOf = (event) => (event.target instanceof Element ? event.target : null)
         const isField = (node) => node.closest(`[${FIELD_ATTRIBUTE}]`) !== null
+        const blockOf = (node) => {
+          const shell = node.closest(`[${BLOCK_ATTRIBUTE}]`)
+          return shell === null ? null : shell.getAttribute(BLOCK_ATTRIBUTE)
+        }
+
+        const chooseBlock = (id) => {
+          setSelection({ type: 'block', id })
+          setCustomName('')
+          return id
+        }
 
         const choose = (node) => {
           const selector = elementKey(node, clone)
-          setSelection({ selector, tag: node.tagName.toLowerCase(), text: autoName(node) })
+          setSelection({ type: 'element', selector, tag: node.tagName.toLowerCase(), text: autoName(node) })
           return selector
         }
 
         const onClick = (event) => {
           const node = elementOf(event)
           if (node === null) return
+          if (isField(node)) {
+            const id = blockOf(node)
+            if (id !== null) chooseBlock(id)
+            return
+          }
           event.stopPropagation()
-          if (isField(node)) return
           event.preventDefault()
+          const id = blockOf(node)
+          if (id !== null) {
+            chooseBlock(id)
+            return
+          }
           choose(node)
         }
 
         const onDoubleClick = (event) => {
           const node = elementOf(event)
           if (node === null || isField(node)) return
+          // A block is content the reader placed, not chrome: hiding it would be a way of deleting it that
+          // leaves it behind, so a double click there is left to the text field itself.
+          if (blockOf(node) !== null) return
           event.preventDefault()
           event.stopPropagation()
           const selector = choose(node)
@@ -3994,18 +5168,16 @@ window.__ModuleLoader__.load({
 
         const onContextMenu = (event) => {
           const node = elementOf(event)
-          if (node === null || isField(node)) return
+          if (node === null) return
           event.preventDefault()
           event.stopPropagation()
-          // A right click on the header or the footer also reaches the two shared switches: the divider
-          // above the transcript and the metadata line under it have no element of their own.
-          const block =
-            node.closest(`[${HEAD_ATTRIBUTE}]`) !== null
-              ? 'head'
-              : node.closest(`[${FOOT_ATTRIBUTE}]`) !== null
-                ? 'foot'
-                : null
-          setMenu({ x: event.clientX, y: event.clientY, selector: choose(node), block })
+          const id = blockOf(node)
+          if (id !== null) {
+            chooseBlock(id)
+            setMenu({ x: event.clientX, y: event.clientY, block: null, selector: null, blockId: id })
+            return
+          }
+          setMenu({ x: event.clientX, y: event.clientY, selector: choose(node), block: null, blockId: null })
         }
 
         const onMove = (event) => {
@@ -4025,20 +5197,39 @@ window.__ModuleLoader__.load({
           if (node === null) return
           const field = node.closest(`[${FIELD_ATTRIBUTE}]`)
           if (field === null) return
-          const name = field.getAttribute(FIELD_ATTRIBUTE)
+          const id = field.getAttribute(FIELD_ATTRIBUTE)
           const text = field.textContent ?? ''
           if (text === '') field.setAttribute('data-empty', 'true')
           else field.removeAttribute('data-empty')
-          writeOptions({ [name]: text })
+          updateBlock(id, { text })
         }
 
         const onKeyDown = (event) => {
           const node = elementOf(event)
           if (node === null) return
           const field = node.closest(`[${FIELD_ATTRIBUTE}]`)
-          if (field !== null && event.key === 'Enter') {
+          if (field === null) return
+          if (event.key === 'Escape') {
             event.preventDefault()
             field.blur()
+          }
+        }
+
+        // A block is dragged by its shell: the payload names the block, and the tray starts the same
+        // gesture from a library entry.
+        const onDragStart = (event) => {
+          const node = elementOf(event)
+          if (node === null) return
+          const id = blockOf(node)
+          if (id === null) return
+          writeDrag({ id, block: null })
+          if (event.dataTransfer !== null && event.dataTransfer !== undefined) {
+            event.dataTransfer.effectAllowed = 'move'
+            try {
+              event.dataTransfer.setData(BLOCK_PAYLOAD, JSON.stringify({ id }))
+            } catch {
+              // A browser that refuses a custom type still delivers the dragstart/drop pair.
+            }
           }
         }
 
@@ -4048,6 +5239,10 @@ window.__ModuleLoader__.load({
         root.addEventListener('mousemove', onMove)
         root.addEventListener('input', onInput)
         root.addEventListener('keydown', onKeyDown)
+        root.addEventListener('dragstart', onDragStart)
+        for (const shell of clone.querySelectorAll(`[${BLOCK_ATTRIBUTE}]`)) {
+          shell.setAttribute('draggable', 'true')
+        }
         return () => {
           root.removeEventListener('click', onClick)
           root.removeEventListener('dblclick', onDoubleClick)
@@ -4055,6 +5250,7 @@ window.__ModuleLoader__.load({
           root.removeEventListener('mousemove', onMove)
           root.removeEventListener('input', onInput)
           root.removeEventListener('keydown', onKeyDown)
+          root.removeEventListener('dragstart', onDragStart)
           if (hitRef.current !== null) hitRef.current.classList.remove('cs-ed-hit')
           hitRef.current = null
         }
@@ -4065,13 +5261,12 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         const stage = stageRef.current
         if (stage === null) return undefined
+        if (selection === null || selection.type === 'block') return undefined
         let marked = null
-        if (selection !== null) {
-          try {
-            marked = stage.clone.querySelector(selection.selector)
-          } catch {
-            marked = null
-          }
+        try {
+          marked = stage.clone.querySelector(selection.selector)
+        } catch {
+          marked = null
         }
         if (marked === null) return undefined
         marked.classList.add('cs-ed-sel')
@@ -4091,7 +5286,11 @@ window.__ModuleLoader__.load({
           if (event.key !== 'Escape') return
           const active = document.activeElement
           if (active instanceof HTMLElement && active.closest('.cs-ed-wrap') !== null) {
-            if (active.tagName === 'INPUT') {
+            if (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') {
+              active.blur()
+              return
+            }
+            if (active.getAttribute('contenteditable') !== null) {
               active.blur()
               return
             }
@@ -4128,7 +5327,9 @@ window.__ModuleLoader__.load({
       if (native === undefined) return null
       const { Button, Menu, Switch } = native
 
-      const rule = selection === null ? null : ruleFor(options, selection.selector)
+      const elementSelection = selection !== null && selection.type === 'element' ? selection : null
+      const blockSelection = selection !== null && selection.type === 'block' ? blockFor(options, selection.id) : null
+      const rule = elementSelection === null ? null : ruleFor(options, elementSelection.selector)
 
       /** Show one hidden entry again for a moment, in the place it came from. */
       const peek = (entry) => {
@@ -4145,85 +5346,145 @@ window.__ModuleLoader__.load({
         }
       }
 
-      /** Put one hidden entry back into the picture. */
+      /** Put one hidden entry back into the picture, and forget a rule that only existed to hide. */
       const restore = (entry) => {
-        if (entry.kind === 'piece') writeOptions({ [entry.option]: false })
-        else saveRule(entry.selector, { hide: false })
+        if (entry.kind === 'piece') {
+          writeOptions({ [entry.option]: false })
+        } else {
+          const current = ruleFor(readOptions(), entry.selector)
+          const silent =
+            current !== null &&
+            Object.keys(current.style).length === 0 &&
+            Object.keys(current.attrs).length === 0
+          if (silent) dropRule(entry.selector)
+          else saveRule(entry.selector, { hide: false })
+        }
         bump()
       }
 
       const patchRule = (patch) => {
-        if (selection === null) return
-        const current = ruleFor(readOptions(), selection.selector)
-        saveRule(selection.selector, { name: current === null ? selection.text : current.name, ...patch })
+        if (elementSelection === null) return
+        const current = ruleFor(readOptions(), elementSelection.selector)
+        saveRule(elementSelection.selector, { name: current === null ? elementSelection.text : current.name, ...patch })
         bump()
       }
 
       const setStyle = (prop, value) => {
-        if (selection === null) return
-        const current = ruleFor(readOptions(), selection.selector)
+        if (elementSelection === null) return
+        const current = ruleFor(readOptions(), elementSelection.selector)
         const style = { ...(current === null ? {} : current.style) }
         const text = value.trim()
         if (text === '') delete style[prop]
         else style[prop] = text
-        saveRule(selection.selector, { style })
+        saveRule(elementSelection.selector, { style })
         bump()
       }
 
       const setAttr = (name, value) => {
-        if (selection === null) return
-        const current = ruleFor(readOptions(), selection.selector)
+        if (elementSelection === null) return
+        const current = ruleFor(readOptions(), elementSelection.selector)
         const attrs = { ...(current === null ? {} : current.attrs) }
         if (value === '') delete attrs[name]
         else attrs[name] = value
-        saveRule(selection.selector, { attrs })
+        saveRule(elementSelection.selector, { attrs })
         bump()
       }
 
+      /** Drop a block, from the palette or from another place in the picture. */
+      const dropBlock = (target) => {
+        if (target === null) return
+        const payload = readDrag()
+        writeDrag(null)
+        setDrag(null)
+        if (payload === null) return
+        if (payload.id !== null && payload.id !== undefined) {
+          moveBlock(payload.id, target.zone, target.index)
+        } else if (payload.block !== null && payload.block !== undefined) {
+          const created = addBlock(target.zone, { ...payload.block, zone: target.zone }, target.index)
+          if (created !== null) setSelection({ type: 'block', id: created.id })
+        }
+        bump()
+      }
+
+      /** Append one block of a kind to the bottom zone, for a click instead of a drag. */
+      const appendBlock = (kind, shape) => {
+        const created = addBlock('bottom', { ...(shape ?? {}), kind, zone: 'bottom' })
+        if (created !== null) {
+          setSelection({ type: 'block', id: created.id })
+          bump()
+        }
+      }
+
+      /** Add one token to the text of the selected block. */
+      const addToken = (name) => {
+        if (blockSelection === null || blockSelection.kind !== 'text') return
+        const text = blockSelection.text === '' ? `{${name}}` : `${blockSelection.text} {${name}}`
+        updateBlock(blockSelection.id, { text })
+        bump()
+      }
+
+      /** Read one image file into the block, as a data URL the renderer can paint without a request. */
+      const pickImage = (event) => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (file === undefined || blockSelection === null) return
+        const reader = new FileReader()
+        reader.onload = () => {
+          const src = typeof reader.result === 'string' ? reader.result : ''
+          if (src === '') return
+          updateBlock(blockSelection.id, { src })
+          bump()
+        }
+        reader.readAsDataURL(file)
+      }
+
       const menuItems = []
-      if (menu !== null) {
+      if (menu !== null && menu.blockId !== null) {
+        menuItems.push({ id: 'blockDelete', label: t('settings.editor.block.delete'), danger: true })
+        menuItems.push({ type: 'separator' })
+        menuItems.push({ id: 'blockTop', label: t('settings.editor.block.toTop') })
+        menuItems.push({ id: 'blockBottom', label: t('settings.editor.block.toBottom') })
+        menuItems.push({ type: 'separator' })
+        menuItems.push({ id: 'reset', label: t('settings.reset'), danger: true })
+      } else if (menu !== null) {
         const current = ruleFor(options, menu.selector)
         const hidden = current !== null && current.hide === true
         menuItems.push({ id: 'toggle', label: hidden ? t('settings.editor.restore') : t('settings.editor.hide') })
         if (current !== null) menuItems.push({ id: 'remove', label: t('settings.editor.removeRule'), danger: true })
-        if (menu.block === 'head' || menu.block === 'foot') {
-          menuItems.push({ type: 'separator' })
-          menuItems.push({
-            id: menu.block === 'head' ? 'divider' : 'meta',
-            label: menu.block === 'head' ? pieceLabel(t, 'divider') : pieceLabel(t, 'meta'),
-          })
-        }
         menuItems.push({ type: 'separator' })
         menuItems.push({ id: 'reset', label: t('settings.reset'), danger: true })
       }
 
       const onMenu = (id) => {
-        const selector = menu === null ? null : menu.selector
+        const current = menu
         setMenu(null)
-        if (selector === null) return
+        if (current === null) return
         if (id === 'reset') {
           resetOptions()
-          bump()
-          return
-        }
-        if (id === 'divider') {
-          writeOptions({ divider: readOptions().divider !== true })
-          bump()
-          return
-        }
-        if (id === 'meta') {
-          writeOptions({ showMeta: readOptions().showMeta !== true })
-          bump()
-          return
-        }
-        if (id === 'remove') {
-          dropRule(selector)
           setSelection(null)
           bump()
           return
         }
-        const current = ruleFor(readOptions(), selector)
-        saveRule(selector, { hide: current === null ? true : current.hide !== true })
+        if (id === 'blockDelete') {
+          removeBlock(current.blockId)
+          setSelection(null)
+          bump()
+          return
+        }
+        if (id === 'blockTop' || id === 'blockBottom') {
+          moveBlock(current.blockId, id === 'blockTop' ? 'top' : 'bottom', 99)
+          bump()
+          return
+        }
+        if (current.selector === null) return
+        if (id === 'remove') {
+          dropRule(current.selector)
+          setSelection(null)
+          bump()
+          return
+        }
+        const existing = ruleFor(readOptions(), current.selector)
+        saveRule(current.selector, { hide: existing === null ? true : existing.hide !== true })
         bump()
       }
 
@@ -4238,187 +5499,95 @@ window.__ModuleLoader__.load({
 
       const styleKeys = rule === null ? [] : Object.keys(rule.style)
       const attrKeys = rule === null ? [] : Object.keys(rule.attrs)
-      const detail = selection === null || stageRef.current === null ? null : describeSelected(stageRef.current.clone, selection.selector)
+      const detail =
+        elementSelection === null || stageRef.current === null
+          ? null
+          : describeSelected(stageRef.current.clone, elementSelection.selector)
 
-      const side =
-        selection === null
-          ? h('div', { className: 'cs-ed-side-empty' }, t('settings.editor.side.none'))
-          : h(
-              'div',
-              { className: 'cs-ed-side' },
-              h(
-                'div',
-                { className: 'cs-ed-side-head' },
-                h('span', { className: 'cs-ed-side-tag' }, selection.tag),
-                h('span', { className: 'cs-ed-side-text' }, selection.text),
-              ),
-              h('div', { className: 'cs-ed-mono' }, selection.selector),
-              h(
-                'div',
-                { className: 'cs-ed-row' },
-                h('span', { className: 'cs-ed-label' }, t('settings.editor.side.hide')),
-                h(Switch, {
-                  checked: rule !== null && rule.hide === true,
-                  onChange: () => patchRule({ hide: rule === null ? true : rule.hide !== true }),
-                }),
-              ),
-              h(
-                'div',
-                { className: 'cs-ed-field-row' },
-                h('div', { className: 'cs-ed-label' }, t('settings.editor.side.name')),
-                h('input', {
-                  className: 'cs-ed-input',
-                  defaultValue: rule === null ? selection.text : rule.name,
-                  key: `name-${selection.selector}-${rule === null ? '' : rule.name}`,
-                  onKeyDown: commitOnEnter,
-                  onBlur: (event) => patchRule({ name: event.target.value }),
-                }),
-              ),
-              h('div', { className: 'cs-ed-label' }, t('settings.editor.side.presets')),
-              h(
-                'div',
-                { className: 'cs-ed-presets' },
-                ...RULE_PRESETS.map((preset) =>
-                  h(
-                    'button',
-                    {
-                      type: 'button',
-                      className: 'cs-ed-mini',
-                      key: preset.id,
-                      onClick: () => {
-                        const current = ruleFor(readOptions(), selection.selector)
-                        saveRule(selection.selector, {
-                          style: { ...(current === null ? {} : current.style), ...preset.style },
-                        })
-                        bump()
-                      },
-                    },
-                    presetLabel(t, preset.id),
-                  ),
-                ),
-              ),
-              h('div', { className: 'cs-ed-label' }, t('settings.editor.side.style')),
-              ...styleKeys.map((prop) =>
-                h(
-                  'div',
-                  { className: 'cs-ed-row', key: `style-${prop}` },
-                  h('span', { className: 'cs-ed-prop', title: prop }, prop),
-                  h('input', {
-                    className: 'cs-ed-input',
-                    defaultValue: rule.style[prop],
-                    onKeyDown: commitOnEnter,
-                    onBlur: (event) => setStyle(prop, event.target.value),
-                  }),
-                  h(
-                    'button',
-                    { type: 'button', className: 'cs-ed-mini', onClick: () => setStyle(prop, ''), title: t('settings.editor.side.remove') },
-                    '×',
-                  ),
-                ),
-              ),
-              h(
-                'div',
-                { className: 'cs-ed-row' },
-                h(
-                  'select',
-                  {
-                    className: 'cs-ed-input',
-                    value: draftProp,
-                    onChange: (event) => setDraftProp(event.target.value),
-                  },
-                  ...STYLE_PROPS.map((prop) => h('option', { key: prop, value: prop }, prop)),
-                ),
-                h('input', {
-                  className: 'cs-ed-input',
-                  placeholder: t('settings.editor.side.value'),
-                  value: draftValue,
-                  onChange: (event) => setDraftValue(event.target.value),
-                  onKeyDown: (event) => {
-                    if (event.key !== 'Enter') return
-                    setStyle(draftProp, draftValue)
-                    setDraftValue('')
-                  },
-                }),
-                h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'cs-ed-mini',
-                    onClick: () => {
-                      setStyle(draftProp, draftValue)
-                      setDraftValue('')
-                    },
-                  },
-                  t('settings.editor.side.add'),
-                ),
-              ),
-              h('div', { className: 'cs-ed-label' }, t('settings.editor.side.attrs')),
-              ...attrKeys.map((name) =>
-                h(
-                  'div',
-                  { className: 'cs-ed-row', key: `attr-${name}` },
-                  h('span', { className: 'cs-ed-prop', title: name }, name),
-                  h('input', {
-                    className: 'cs-ed-input',
-                    defaultValue: rule.attrs[name] ?? '',
-                    onKeyDown: commitOnEnter,
-                    onBlur: (event) => setAttr(name, event.target.value),
-                  }),
-                  h(
-                    'button',
-                    { type: 'button', className: 'cs-ed-mini', onClick: () => setAttr(name, ''), title: t('settings.editor.side.remove') },
-                    '×',
-                  ),
-                ),
-              ),
-              h(
-                'div',
-                { className: 'cs-ed-row' },
-                h('input', {
-                  className: 'cs-ed-input',
-                  placeholder: 'data-x',
-                  value: draftAttr,
-                  onChange: (event) => setDraftAttr(event.target.value),
-                }),
-                h('input', {
-                  className: 'cs-ed-input',
-                  placeholder: t('settings.editor.side.value'),
-                  value: draftAttrValue,
-                  onChange: (event) => setDraftAttrValue(event.target.value),
-                  onKeyDown: (event) => {
-                    if (event.key !== 'Enter') return
-                    setAttr(draftAttr.trim(), draftAttrValue)
-                    setDraftAttr('')
-                    setDraftAttrValue('')
-                  },
-                }),
-                h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'cs-ed-mini',
-                    onClick: () => {
-                      setAttr(draftAttr.trim(), draftAttrValue)
-                      setDraftAttr('')
-                      setDraftAttrValue('')
-                    },
-                  },
-                  t('settings.editor.side.add'),
-                ),
-              ),
-              detail === null ? null : h('div', { className: 'cs-ed-note' }, detail),
-              pureRuleNote(t),
-            )
+      const inspector =
+        blockSelection !== null
+          ? h(blockInspector, {
+              t,
+              block: blockSelection,
+              Button,
+              Menu,
+              fileRef,
+              onPickImage: pickImage,
+              customName,
+              setCustomName,
+              onCustomName: (value) => setCustomName(value),
+              onSaveCustom: () => {
+                const name = customName.trim() === '' ? kindLabel(t, blockSelection.kind) : customName
+                saveCustom(String(name), blockSelection)
+                setCustomName('')
+              },
+              onRemove: () => {
+                removeBlock(blockSelection.id)
+                setSelection(null)
+                bump()
+              },
+              onToken: addToken,
+              onPatch: (patch) => {
+                updateBlock(blockSelection.id, patch)
+                bump()
+              },
+            })
+          : elementSelection !== null
+            ? h(elementInspector, {
+                t,
+                selection: elementSelection,
+                rule,
+                detail,
+                styleKeys,
+                attrKeys,
+                Switch,
+                Button,
+                draftProp,
+                draftValue,
+                draftAttr,
+                draftAttrValue,
+                setDraftProp,
+                setDraftValue,
+                setDraftAttr,
+                setDraftAttrValue,
+                onHide: () => patchRule({ hide: rule === null ? true : rule.hide !== true }),
+                onRename: (value) => {
+                  if (elementSelection === null) return
+                  saveRule(elementSelection.selector, {
+                    name: value.trim() === '' ? elementSelection.text : value,
+                  })
+                  bump()
+                },
+                onPreset: (preset) => patchRule({ style: { ...(rule === null ? {} : rule.style), ...preset.style } }),
+                onStyle: setStyle,
+                onAttr: setAttr,
+                onRemoveRule: () => {
+                  dropRule(elementSelection.selector)
+                  setSelection(null)
+                  bump()
+                },
+              })
+            : h('div', { className: 'cs-ed-empty' }, t('settings.editor.side.none'))
+
+      const library = h(libraryView, {
+        t,
+        options,
+        blockSelection,
+        onAdd: (kind, shape) => appendBlock(kind, shape),
+        onDropCustom: (id) => {
+          dropCustom(id)
+          bump()
+        },
+        onToken: addToken,
+        onDrag: (payload) => {
+          writeDrag(payload)
+          setDrag(null)
+        },
+      })
 
       return h(
         'div',
-        {
-          className: 'cs-ed-wrap',
-          style:
-            pane === null
-              ? undefined
-              : { left: `${pane.left}px`, top: `${pane.top}px`, width: `${pane.width}px`, height: `${pane.height}px` },
-        },
+        { className: 'cs-ed-wrap', style: pane === null ? undefined : { left: `${pane.left}px`, top: `${pane.top}px`, width: `${pane.width}px`, height: `${pane.height}px` } },
         h(
           'div',
           { className: 'cs-ed-bar' },
@@ -4426,7 +5595,7 @@ window.__ModuleLoader__.load({
             'div',
             { className: 'cs-ed-lead' },
             h('div', { className: 'cs-ed-title' }, t('settings.title')),
-            h('div', { className: 'cs-ed-hint' }, missing ? t('settings.editor.noConversation') : t('settings.editor.hint')),
+            h('div', { className: 'cs-ed-hint' }, t('settings.editor.hint')),
           ),
           h(
             'div',
@@ -4434,117 +5603,137 @@ window.__ModuleLoader__.load({
             h(
               Button,
               {
-                variant: pick ? 'primary' : 'ghost',
+                variant: pick ? 'primary' : 'outline',
                 size: 'sm',
                 onClick: () => {
-                  setPick((value) => !value)
-                  if (hitRef.current !== null) hitRef.current.classList.remove('cs-ed-hit')
-                  hitRef.current = null
+                  const next = pick !== true
+                  setPick(next)
+                  if (next) setSelection(null)
                 },
               },
               t('settings.editor.pick'),
             ),
-            h(Button, { variant: 'ghost', size: 'sm', onClick: () => { resetOptions(); setSelection(null); bump() } }, t('settings.reset')),
+            h(
+              Button,
+              {
+                variant: 'ghost',
+                size: 'sm',
+                onClick: () => {
+                  resetOptions()
+                  setSelection(null)
+                  bump()
+                },
+              },
+              t('settings.reset'),
+            ),
             h(Button, { variant: 'primary', size: 'sm', onClick: onClose }, t('settings.editor.done')),
           ),
         ),
+        missing ? h('div', { className: 'cs-ed-empty' }, t('settings.editor.noConversation')) : null,
+        h('div', { className: 'cs-ed-host', ref: hostRef, onDragOver: onDragOver, onDragLeave: onDragLeave, onDrop: onDrop }),
+        drag === null ? null : h('div', { className: 'cs-ed-drop', style: { top: `${drag.y}px` } }),
         h(
           'div',
-          { className: 'cs-ed-body' },
-          h('div', { className: 'cs-ed-host', ref: hostRef }),
-          side,
-        ),
-        h(
-          'div',
-          { className: 'cs-ed-hidden' },
-          h('span', { className: 'cs-ed-label' }, t('settings.editor.hidden')),
-          hiddenEntries.length === 0
-            ? h('span', { className: 'cs-ed-note' }, t('settings.editor.hiddenEmpty'))
-            : null,
-          ...hiddenEntries.map((entry) =>
-            h(
-              'button',
-              {
-                type: 'button',
-                className: 'cs-ed-chip',
-                key: `${entry.kind}-${entry.id}`,
-                title: t('settings.editor.hiddenHint'),
-                onClick: () => peek(entry),
-                onDoubleClick: () => restore(entry),
-              },
-              h('span', { className: 'cs-ed-chip-part' }, entryLabel(t, entry, options)),
-              entry.elements.length > 1 ? h('span', { className: 'cs-ed-chip-count' }, `${entry.elements.length}`) : null,
-            ),
+          { className: 'cs-ed-tray' },
+          h(
+            'div',
+            { className: 'cs-ed-hidden' },
+            h('span', { className: 'cs-ed-label' }, t('settings.editor.hidden')),
+            hiddenEntries.length === 0
+              ? h('span', { className: 'cs-ed-hintline' }, t('settings.editor.hiddenEmpty'))
+              : h(
+                  'span',
+                  { className: 'cs-ed-chips' },
+                  ...hiddenEntries.map((entry) =>
+                    h(
+                      'span',
+                      {
+                        key: `${entry.kind}:${entry.id}`,
+                        className: 'cs-ed-chip',
+                        title: t('settings.editor.hiddenHint'),
+                        onClick: () => peek(entry),
+                        onDoubleClick: () => restore(entry),
+                      },
+                      h('span', { className: 'cs-ed-chip-part' }, entryLabel(t, entry)),
+                      entry.kind === 'rule' && (entry.elements ?? []).length > 1
+                        ? h('span', { className: 'cs-ed-chip-count' }, String(entry.elements.length))
+                        : null,
+                    ),
+                  ),
+                ),
           ),
+          h('div', { className: 'cs-ed-cols' }, h('div', { className: 'cs-ed-pane' }, inspector), h('div', { className: 'cs-ed-pane' }, library)),
         ),
-        menu === null
-          ? null
-          : h(Menu, {
-              open: true,
-              anchorPoint: { x: menu.x, y: menu.y },
-              items: menuItems,
-              onSelect: onMenu,
-              onClose: () => setMenu(null),
-              portal: true,
-              align: 'start',
-              side: 'bottom',
-            }),
+        h(Menu, {
+          open: menu !== null,
+          anchorPoint: menu === null ? undefined : { x: menu.x, y: menu.y },
+          align: 'start',
+          portal: true,
+          items: menuItems,
+          selectedIds: [],
+          onSelect: onMenu,
+          onClose: () => setMenu(null),
+        }),
       )
-    }
 
-    /** The element's own facts, as one line of small print under the controls. */
-    function describeSelected(clone, selector) {
-      let node
-      try {
-        node = clone.querySelector(selector)
-      } catch {
-        node = null
+      function onDragOver(event) {
+        const stage = stageRef.current
+        if (stage === null || hostRef.current === null) return
+        const payload = readDrag()
+        if (payload === null) return
+        event.preventDefault()
+        event.stopPropagation()
+        if (event.dataTransfer !== null && event.dataTransfer !== undefined) {
+          event.dataTransfer.dropEffect = payload.id === null ? 'copy' : 'move'
+        }
+        const target = dropTarget(stage.clone, hostRef.current, event.clientY)
+        if (target === null) return
+        setDrag(target)
       }
-      if (node === null) return null
-      const facts = describeElement(node)
-      const parts = [facts.tag]
-      if (facts.children > 0) parts.push(`${facts.children} children`)
-      const names = Object.keys(facts.attrs)
-      if (names.length > 0) parts.push(names.join(' '))
-      return parts.join(' · ')
+
+      function onDragLeave(event) {
+        if (hostRef.current === null) return
+        const next = event.relatedTarget
+        if (next instanceof Node && hostRef.current.contains(next)) return
+        setDrag(null)
+      }
+
+      function onDrop(event) {
+        event.preventDefault()
+        event.stopPropagation()
+        const stage = stageRef.current
+        if (stage === null || hostRef.current === null) return
+        const target = dropTarget(stage.clone, hostRef.current, event.clientY)
+        dropBlock(target)
+      }
     }
 
-    /** A reminder that nothing is applied until the reader means it: a rule, not a temporary edit. */
-    function pureRuleNote(t) {
-      return h('div', { className: 'cs-ed-note' }, t('settings.editor.side.ruleNote'))
-    }
-
-    /** The mounted root, so opening twice cannot stack two surfaces. */
+    /** The inspector for one element of the copy: what it is, its name, and what to do with it. */
     let mounted = null
 
-    /** Whether the edit surface is open. */
+    /** Whether the surface is already open. */
     function editorOpen() {
       return mounted !== null
     }
 
-    /**
-     * Open the edit surface over the conversation, or do nothing when it is already open or the host
-     * offers no React root to mount it in.
-     */
+    /** Open the surface on the current conversation. */
     function openEditor() {
       if (mounted !== null || reactDom === undefined) return
-      const host = document.createElement('div')
+      const host = document.body.appendChild(document.createElement('div'))
       host.className = 'cs-ed-root'
-      document.body.appendChild(host)
       const root = reactDom.createRoot(host)
       const close = () => {
         root.unmount()
         host.remove()
         mounted = null
       }
-      mounted = { host, root, close }
+      mounted = { host, close }
       root.render(h(CaptureEditor, { onClose: close }))
     }
 
-    /** Close the edit surface if it is open. */
+    /** Close the surface if it is open. */
     function closeEditor() {
-      if (mounted === null) return
-      mounted.close()
+      if (mounted !== null) mounted.close()
     }
 
     // ===== views/buttons.js ==========================================
@@ -5034,6 +6223,7 @@ window.__ModuleLoader__.load({
         window.__chatScreenshot = {
           captureConversation,
           captureTurn,
+          openEditor,
           translate,
         }
         return () => {

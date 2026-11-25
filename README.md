@@ -55,37 +55,45 @@ A successful copy flashes a check over the icon. When the clipboard is unavailab
 ## Settings
 
 Settings > ChatScreenshot holds one button, three layout rows and a reset. The button opens the editor
-**over the conversation itself**: the transcript stays where it is and the picture is shaped in place.
+**over the conversation itself**: the transcript stays where it is, and the picture is shaped in place.
 
 The editor is not a form about the picture; it is the picture. The copy shown there is built by the
-capture's own path, so what is on screen while editing is what lands in the PNG.
+capture's own path, so what is on screen while editing is what lands in the PNG. The tray along the
+bottom holds the tools and never narrows the preview.
 
-- **Any element is a candidate.** The eight controls the plugin used to name are now only a starting
-  vocabulary: double-click any element in the copy to hide it, double-click it again to bring it back.
-  Whatever a plugin or a future version adds to the transcript is reachable the same way.
-- **Hiding is a declaration, not a deletion.** A hidden element keeps its place in the copy and takes
-  no room in the picture, so what you hide is what the capture measures.
-- **The hidden bar keeps the list.** Everything hidden is pinned along the bottom of the editor: click
-  an entry to flash it back into place, double-click to restore it.
-- **The side panel edits the selected element.** Click anything to select it and the panel shows its
-  tag, selector, a hide switch, an editable name, style presets (dim, outline, trim spacing, drop
-  background, monospace, small type) and free-form style and attribute rows. Changes apply to the
-  next capture, and the selector keeps them attached to the same elements.
-- **Type the header and the footer straight into the picture.** Both blocks are drawn in the copy with
-  their placeholders. Both accept `{turns}`, `{date}` and `{time}`.
-- **Right-click anywhere** for hide, restore, "remove the rule for this element", the divider, the
+- **Any element is a candidate.** The eight controls the plugin used to name are only a starting
+  vocabulary now: double-click any element in the copy to hide it, double-click it again to bring it
+  back. Whatever a plugin or a future version adds to the transcript is reachable the same way.
+- **Hiding is a declaration, not a deletion.** A hidden element keeps its place in the copy and takes no
+  room in the picture, so what you hide is what the capture measures.
+- **The hidden bar keeps the list.** Everything hidden is pinned along the bottom: click an entry to
+  flash it back into place for a moment, double-click to restore it for good.
+- **Blocks go above or below.** The library offers text, spacer, image, divider and the metadata line.
+  Click one to append it to the selected zone, or drag it onto the picture — a line shows where it will
+  land — and drag a block already in the picture to move it, including across the two zones.
+- **Text reads live values.** `{turns}` `{prompts}` `{date}` `{time}` `{weekday}` `{title}`
+  `{model}` `{session}` `{app}` and `{version}` are filled at capture time from the conversation and
+  the host. Placeholders stay readable while editing, and anything unknown is left untouched.
+- **Images never leave this browser.** A picked file is read into the options as a data URL; anything
+  past 800k characters is refused rather than silently stored.
+- **A block can become a component.** Name the selected block and it joins the library; clicking that
+  entry appends a copy. Up to twelve components and twenty-four blocks.
+- **The left column edits the selection.** Click an element for its tag, selector, a hide switch, an
+  editable name, six style presets (dim, outline, trim spacing, drop background, monospace, small type)
+  and free-form style and attribute rows; click a block for its text, size, alignment, spacing, image
+  and width.
+- **Right-click anything** for hide, restore, "remove the rule for this element", the divider, the
   metadata line and "Restore defaults".
 - **Done** closes the editor.
 
-A rule is `{ selector, name, hide, style, attrs }`; the selector is what carries it, so a rule keeps
-working for every element the selector matches. Choices live in this browser's `localStorage` under
-`chat-screenshot.options`; the plugin registers no host configuration and stores nothing on the server.
-A stored value that no longer matches an offered one falls back to the nearest choice, and "Restore
-defaults" brings back the picture the plugin took before the settings existed.
+A rule is `{ selector, name, hide, style, attrs }`; the selector carries it, so it keeps working for
+every element the selector matches. Blocks are `{ id, kind, zone, ... }`, stored beside the rules.
+Choices live in this browser's `localStorage` under `chat-screenshot.options`; the plugin registers no
+host configuration and stores nothing on the server. A stored value that no longer matches an offered
+one falls back to the nearest choice, and "Restore defaults" brings back the picture the plugin took
+before the settings existed.
 
-Behind the editor, three rows set alignment, outer margin and resolution. A header is drawn above the
-first turn and a footer below the last one, inside the cropped area, so they survive the same render
-path as the conversation.
+Behind the editor, three rows set alignment, outer margin and resolution.
 
 The menu, the switches and the fields are the host's own components, read from the
 `@deepseek-ai/dsh-client-ui-primitives` seed word, so the editor keeps the theme, the focus handling and
@@ -106,10 +114,10 @@ the editor — the switches then fall back to plain markup.
 | `index.js` | Host half: nothing to run, present because a loader entry must be a plugin |
 | `src/client/apply.js` | Registration: locale tables, stylesheet, both entries, the settings section |
 | `src/client/shell/` | Constants, React access, saved options, message tables, stylesheet, status state |
-| `src/client/dom/` | Clone preparation, the chrome piece table, history paging, the blocks the settings add, turn band, the capture itself, the edit surface |
+| `src/client/dom/` | Clone preparation, the rule engine, template variables, history paging, the blocks the settings add, turn band, the capture itself, the edit surface |
 | `src/client/render/` | Renderer choice, SVG document, hand painter, crop, canvas budget |
 | `src/client/output/` | Clipboard write and download |
-| `src/client/views/` | The button body, the right-click menu, the turn chooser, the editor, the two entries, the icons, the settings section |
+| `src/client/views/` | The button body, the right-click menu, the turn chooser, the editor and its rows, inspector, library and drag helpers, the two entries, the icons, the settings section |
 | `src/client/manifest.json` | Bundle order |
 | `client.js` | Generated bundle; do not edit |
 | `build.mjs` | Joins the parts into `client.js` |
@@ -133,3 +141,4 @@ Every user-facing string lives in `src/client/shell/i18n.js` and is registered w
 ## License
 
 [GNU General Public License v3.0](LICENSE), `GPL-3.0-only`. Copyright (C) 2026 invefa. A redistributed build keeps this license and comes with the corresponding source.
+
