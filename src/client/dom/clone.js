@@ -4,16 +4,15 @@
  * Every operation here works on the staged clone, never on the live tree: the composer the user may
  * be typing in, the scroll position and the app's own state stay untouched.
  *
- * One table decides what counts as chrome, so the capture and the edit surface agree by construction:
- * the capture deletes the pieces the reader switched off, and the edit surface keeps every one of
- * them, marked, and counts a click on it.
+ * One table names the chrome this plugin knows about. It is not a closed list of what can be hidden —
+ * `dom/rules.js` applies the reader's own rules to anything else — it is the set of pieces that get a
+ * name, a default and a switch out of the box.
  */
 
 import {
   ATTACHMENTS_ATTRIBUTE,
   CLOCK_ROW_ATTRIBUTE,
   HISTORY_ATTRIBUTE,
-  PIECE_ATTRIBUTE,
   PRUNE_DEPTH,
   PROCESS_ATTRIBUTE,
   SKIP_ATTRIBUTES,
@@ -22,7 +21,6 @@ import {
   TURN_SPACER_ATTRIBUTE,
   WIDTH_HANDLE_ATTRIBUTE,
 } from '../shell/const.js'
-import { OPTION_DEFAULTS } from '../shell/options.js'
 
 /**
  * The chrome pieces a capture can drop, each one tied to the switch that drops it.
@@ -109,46 +107,12 @@ export function sanitizeClone(live, clone) {
 }
 
 /** Every element one piece covers, in document order, without duplicates. */
-function matches(clone, selectors) {
+export function pieceElements(clone, piece) {
   const found = []
-  for (const selector of selectors) {
+  for (const selector of piece.selectors) {
     for (const node of clone.querySelectorAll(selector)) {
       if (!found.includes(node)) found.push(node)
     }
   }
   return found
-}
-
-/**
- * Drop the chrome the reader switched off.
- *
- * Cropping cannot remove these because they sit in the transcript's flow; they are deleted by
- * marker instead. A missing option falls back to the default, so a caller can pass a partial set.
- *
- * @param clone - the staged copy.
- * @param options - the reader's switches.
- */
-export function dropChrome(clone, options = OPTION_DEFAULTS) {
-  for (const piece of CHROME_PIECES) {
-    if (options[piece.option] !== true) continue
-    for (const node of matches(clone, piece.selectors)) node.remove()
-  }
-}
-
-/**
- * Keep every piece in the clone and mark it instead, for the edit surface: what the reader switched
- * off stays visible, dimmed, so it can be switched back on by clicking the place it occupies.
- *
- * @returns {Element[]} the elements carrying a piece tag.
- */
-export function paintChrome(clone, options = OPTION_DEFAULTS) {
-  const painted = []
-  for (const piece of CHROME_PIECES) {
-    for (const node of matches(clone, piece.selectors)) {
-      node.setAttribute(PIECE_ATTRIBUTE, piece.id)
-      node.classList.add(options[piece.option] === true ? 'cs-ed-off' : 'cs-ed-on')
-      painted.push(node)
-    }
-  }
-  return painted
 }

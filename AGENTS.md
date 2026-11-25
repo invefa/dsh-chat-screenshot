@@ -74,11 +74,18 @@ Documentation is English with a `.zh-CN.md` edition.
   dims and stays where the picture would draw it — no setting is invisible, and no part is
   special-cased into permanent absence. Anything the editor shows comes from `readOptions()`; a
   control that kept its own state would show a picture no capture will ever make.
-- `dom/clone.js` holds the piece table, and it is the only list of what can be switched off: the
-  capture drops what it names (`dropChrome`) and the editor marks what it holds (`paintChrome`). A
-  part that could ever appear in a picture belongs in that table, never in an unconditional removal at
-  a call site — the load-earlier control and the composer used to be cut that way, which is exactly how
-  they became settings nobody could find.
+- `dom/rules.js` is the only path that hides anything, and `shell/options.js` is the only
+  shape it reads. A part the plugin names is a rule like any other: the built-in eight keep their names
+  and defaults in `CHROME_PIECES`, but they travel through `applyRules` exactly as a user rule does,
+  so the capture and the editor cannot disagree about what is hidden. Nothing is removed
+  unconditionally at a call site — the load-earlier control and the composer used to be cut that way,
+  which is exactly how they became settings nobody could find.
+- Hiding is a declaration, not a deletion. A hidden element keeps its place in the copy and loses its
+  space in the picture: that is what lets the editor point at the hole, flash it back and restore it,
+  and what keeps the measured picture honest.
+- Any element is a candidate. A rule carries a selector, not an identity, so whatever a plugin adds to
+  the transcript is reachable with the same two clicks; `elementKey` mints a selector for the element
+  under the pointer, and the side panel is where it gets a name and a style.
 - The editor's root is mounted on `document.body`. The overlay is `position: fixed`, and inside a
   subtree that carries a `transform` or a `filter` it would be positioned against that ancestor
   instead of the viewport. It is placed over the conversation's own rectangle rather than over the

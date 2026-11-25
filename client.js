@@ -191,6 +191,78 @@ window.__ModuleLoader__.load({
      */
     const DEBUG_MEASURE = false
 
+    /**
+     * Rules the reader writes on arbitrary elements.
+     *
+     * A rule is a selector plus what to do with what it matches, so the picture is not limited to the
+     * chrome this plugin happens to know: a host release that adds a row, and another plugin that paints
+     * one, are both reachable. The caps exist because the rules are stored in the page and applied to
+     * every capture: a pasted wall of CSS would be paid for on each shot.
+     */
+    const MAX_RULES = 40
+    const RULE_NAME_CHARS = 40
+    const RULE_SELECTOR_CHARS = 240
+    const RULE_VALUE_CHARS = 120
+    const RULE_ATTR_CHARS = 60
+
+    /**
+     * The properties the element inspector offers.
+     *
+     * These are the ones a transcript actually needs to be re-shaped for a picture: what is drawn, how
+     * loud it is, how much room it takes and how it aligns. Inline declarations win over the host's
+     * stylesheet, and they survive serialization into the SVG, which is what makes a preview and a
+     * capture show the same thing.
+     */
+    const STYLE_PROPS = [
+      'display',
+      'visibility',
+      'opacity',
+      'color',
+      'background',
+      'border',
+      'border-radius',
+      'box-shadow',
+      'padding',
+      'margin',
+      'gap',
+      'font-size',
+      'font-weight',
+      'font-family',
+      'line-height',
+      'letter-spacing',
+      'text-align',
+      'text-decoration',
+      'white-space',
+      'width',
+      'max-width',
+      'height',
+      'max-height',
+      'overflow',
+      'align-self',
+      'justify-content',
+      'filter',
+      'transform',
+    ]
+
+    /** Style bundles offered as one click in the inspector. */
+    const RULE_PRESETS = [
+      { id: 'dim', style: { opacity: '0.35' } },
+      { id: 'mark', style: { outline: '1px dashed currentColor' } },
+      { id: 'tight', style: { padding: '0', margin: '0' } },
+      { id: 'plain', style: { background: 'transparent', border: '0', 'box-shadow': 'none' } },
+      { id: 'mono', style: { 'font-family': 'ui-monospace, SFMono-Regular, Menlo, monospace' } },
+      { id: 'small', style: { 'font-size': '12px', 'line-height': '1.35' } },
+    ]
+
+    /** How long a hidden element is shown in place when its chip is clicked. */
+    const PEEK_MS = 1600
+
+    /**
+     * What the capture's own hiding does to a matched element: it stays in the copy with no box, so a
+     * capture measures the transcript without it while the edit surface can still show where it was.
+     */
+    const HIDE_STYLE = { display: 'none' }
+
     // ===== shell/runtime.js ==========================================
 
     /**
@@ -316,7 +388,78 @@ window.__ModuleLoader__.load({
       align: 'left',
       edge: EDGE_PADDING,
       scale: 'auto',
+      rules: [],
     })
+
+    /**
+     * A stable id for a rule, derived from its selector.
+     *
+     * The selector is what a rule is about, so two rules on the same element are one rule: deriving the
+     * id keeps a hand-edited store, a repeated click and a reload all pointing at the same entry.
+     */
+    function ruleId(selector) {
+      let hash = 0
+      for (let index = 0; index < selector.length; index += 1) {
+        hash = (hash * 31 + selector.charCodeAt(index)) | 0
+      }
+      return `r${(hash >>> 0).toString(36)}`
+    }
+
+    /** One style map, keeping only the offered properties and only non-empty values. */
+    function normalizeStyle(raw) {
+      const style = {}
+      if (raw === null || typeof raw !== 'object') return style
+      for (const prop of STYLE_PROPS) {
+        const value = raw[prop]
+        if (typeof value !== 'string') continue
+        const text = value.trim().slice(0, RULE_VALUE_CHARS)
+        if (text !== '') style[prop] = text
+      }
+      return style
+    }
+
+    /** One attribute map: names the DOM accepts, values as text, and `null` meaning "remove it". */
+    function normalizeAttrs(raw) {
+      const attrs = {}
+      if (raw === null || typeof raw !== 'object') return attrs
+      for (const name of Object.keys(raw).slice(0, MAX_RULES)) {
+        if (!/^[a-z][a-z0-9-]*$/i.test(name)) continue
+        if (name === 'style' || name === 'class') continue
+        const value = raw[name]
+        if (value === null) attrs[name] = null
+        else if (typeof value === 'string') attrs[name] = value.slice(0, RULE_ATTR_CHARS)
+      }
+      return attrs
+    }
+
+    /** Clamp one stored rule onto the shape the capture understands, or drop it. */
+    function normalizeRule(raw) {
+      if (raw === null || typeof raw !== 'object') return null
+      const selector = typeof raw.selector === 'string' ? raw.selector.trim().slice(0, RULE_SELECTOR_CHARS) : ''
+      if (selector === '') return null
+      return {
+        id: ruleId(selector),
+        selector,
+        name: typeof raw.name === 'string' ? raw.name.trim().slice(0, RULE_NAME_CHARS) : '',
+        hide: raw.hide === true,
+        style: normalizeStyle(raw.style),
+        attrs: normalizeAttrs(raw.attrs),
+      }
+    }
+
+    /** Every stored rule, deduplicated by id and capped. */
+    function normalizeRules(raw) {
+      if (!Array.isArray(raw)) return []
+      // A selector owns one rule: a later duplicate replaces the earlier one in place, which keeps the
+      // order the user built while making a hand-edited or half-written array behave predictably.
+      const byId = new Map()
+      for (const entry of raw) {
+        const rule = normalizeRule(entry)
+        if (rule === null) continue
+        byId.set(rule.id, rule)
+      }
+      return Array.from(byId.values()).slice(0, MAX_RULES)
+    }
 
     /** The nearest offered preset, so a stored value outside the list still lands on a real one. */
     function nearestEdge(value) {
@@ -343,6 +486,7 @@ window.__ModuleLoader__.load({
       if (ALIGN_CHOICES.includes(source.align)) next.align = source.align
       if (SCALE_CHOICES.includes(source.scale)) next.scale = source.scale
       next.edge = nearestEdge(source.edge)
+      next.rules = normalizeRules(source.rules)
       return next
     }
 
@@ -424,6 +568,41 @@ window.__ModuleLoader__.load({
       return () => listeners.delete(listener)
     }
 
+    /** The rule that covers one selector, or null when the element carries none. */
+    function ruleFor(options, selector) {
+      return options.rules.find((rule) => rule.selector === selector) ?? null
+    }
+
+    /**
+     * Write one rule, creating it when the selector has none yet.
+     *
+     * The editor only ever knows an element and a change, so the merge lives here: a patch changes the
+     * named fields and leaves the rest of the rule alone, which is what makes "hide this" and "make it
+     * smaller" accumulate on the same element instead of replacing each other.
+     */
+    function saveRule(selector, patch) {
+      const current = readOptions()
+      const existing = ruleFor(current, selector)
+      const draft = {
+        selector,
+        name: existing === null ? '' : existing.name,
+        hide: existing === null ? false : existing.hide,
+        style: existing === null ? {} : existing.style,
+        attrs: existing === null ? {} : existing.attrs,
+        ...patch,
+      }
+      const saved = normalizeRule(draft)
+      if (saved === null) return null
+      writeOptions({ rules: [...current.rules.filter((rule) => rule.selector !== selector), saved] })
+      return saved
+    }
+
+    /** Drop the rule on one selector, leaving the element as the host draws it. */
+    function dropRule(selector) {
+      const current = readOptions()
+      writeOptions({ rules: current.rules.filter((rule) => rule.selector !== selector) })
+    }
+
     /** The options in a component, re-rendered on every change. */
     function useOptions() {
       return react.useSyncExternalStore(subscribeOptions, readOptions, readOptions)
@@ -476,10 +655,31 @@ window.__ModuleLoader__.load({
         'settings.intro': '在这里直接把截图调成想要的样子。点部件隐藏它，再点放回来；页头和页脚就在它们出现的位置写。改动立刻生效，并保存在本机。',
         'settings.editor.open': '在对话中调整…',
         'settings.editor.noConversation': '先打开一个会话，再回来调整。',
-        'settings.editor.hint': '点部件隐藏，再点放回来；标题、副标题和页脚直接在图里改，回车结束一行。可用 {turns}、{date}、{time}。',
+        'settings.editor.hint': '双击画面里的任意元素即可隐藏，被隐藏的条目列在下方：单击定位，双击还原；侧栏可以改名和改样式，右键还有更多。',
+        'settings.editor.pick': '选取元素',
         'settings.editor.done': '完成',
-        'settings.editor.show': '显示',
         'settings.editor.hide': '隐藏',
+        'settings.editor.restore': '还原',
+        'settings.editor.removeRule': '删除这个元素的规则',
+        'settings.editor.hidden': '已隐藏',
+        'settings.editor.hiddenEmpty': '没有隐藏的元素。双击画面里的元素就能隐藏它。',
+        'settings.editor.hiddenHint': '单击定位，双击还原',
+        'settings.editor.side.none': '点画面里的任意元素，查看它的标签、选择器和样式。',
+        'settings.editor.side.hide': '隐藏',
+        'settings.editor.side.name': '名称',
+        'settings.editor.side.presets': '预设',
+        'settings.editor.side.style': '样式',
+        'settings.editor.side.attrs': '属性',
+        'settings.editor.side.value': '值',
+        'settings.editor.side.add': '添加',
+        'settings.editor.side.remove': '移除',
+        'settings.editor.side.ruleNote': '改动按元素的选择器保存，截图时对同结构的元素生效。',
+        'settings.editor.preset.dim': '淡化',
+        'settings.editor.preset.mark': '描边',
+        'settings.editor.preset.tight': '去留白',
+        'settings.editor.preset.plain': '去底色',
+        'settings.editor.preset.mono': '等宽字体',
+        'settings.editor.preset.small': '小字号',
         'settings.piece.nav': '轮次导航',
         'settings.piece.attachments': '用户附件条',
         'settings.piece.process': '思考与工具过程',
@@ -488,8 +688,6 @@ window.__ModuleLoader__.load({
         'settings.piece.handles': '拖拽手柄与占位',
         'settings.piece.paging': '加载更早的控件',
         'settings.piece.composer': '输入区',
-        'settings.piece.head': '页头',
-        'settings.piece.foot': '页脚',
         'settings.piece.meta': '页脚信息行',
         'settings.piece.divider': '分隔线',
         'settings.edit.title': '添加标题',
@@ -544,10 +742,31 @@ window.__ModuleLoader__.load({
         'settings.intro': 'Shape the capture right here. Click a piece to drop it, click it again to bring it back, and write the header and footer where they appear. Changes apply at once and are stored on this machine.',
         'settings.editor.open': 'Adjust in the conversation…',
         'settings.editor.noConversation': 'Open a conversation first, then come back.',
-        'settings.editor.hint': 'Click a piece to drop it, click it again to bring it back. Type the title, subtitle and footer right in the picture; Enter ends a line. {turns}, {date} and {time} are available.',
+        'settings.editor.hint': 'Double-click any element to hide it. Hidden entries sit in the list below: click to locate, double-click to restore. The side panel renames and restyles; the right button offers more.',
+        'settings.editor.pick': 'Pick an element',
         'settings.editor.done': 'Done',
-        'settings.editor.show': 'Shown',
         'settings.editor.hide': 'Hidden',
+        'settings.editor.restore': 'Restore',
+        'settings.editor.removeRule': 'Delete the rule for this element',
+        'settings.editor.hidden': 'Hidden',
+        'settings.editor.hiddenEmpty': 'Nothing is hidden. Double-click an element to hide it.',
+        'settings.editor.hiddenHint': 'Click to locate, double-click to restore',
+        'settings.editor.side.none': 'Click any element in the picture to see its tag, selector and style.',
+        'settings.editor.side.hide': 'Hidden',
+        'settings.editor.side.name': 'Name',
+        'settings.editor.side.presets': 'Presets',
+        'settings.editor.side.style': 'Style',
+        'settings.editor.side.attrs': 'Attributes',
+        'settings.editor.side.value': 'Value',
+        'settings.editor.side.add': 'Add',
+        'settings.editor.side.remove': 'Remove',
+        'settings.editor.side.ruleNote': 'Changes are stored per selector and apply to the same element in a capture.',
+        'settings.editor.preset.dim': 'Dim',
+        'settings.editor.preset.mark': 'Outline',
+        'settings.editor.preset.tight': 'Tight',
+        'settings.editor.preset.plain': 'No fill',
+        'settings.editor.preset.mono': 'Monospace',
+        'settings.editor.preset.small': 'Smaller',
         'settings.piece.nav': 'Turn navigator',
         'settings.piece.attachments': 'Attachment strip',
         'settings.piece.process': 'Thinking and tool steps',
@@ -556,8 +775,6 @@ window.__ModuleLoader__.load({
         'settings.piece.handles': 'Drag handles and spacers',
         'settings.piece.paging': 'Load-earlier control',
         'settings.piece.composer': 'Composer',
-        'settings.piece.head': 'Header',
-        'settings.piece.foot': 'Footer',
         'settings.piece.meta': 'Footer meta line',
         'settings.piece.divider': 'Divider',
         'settings.edit.title': 'Add a title',
@@ -883,10 +1100,167 @@ window.__ModuleLoader__.load({
       align-items: center;
       margin-left: auto;
     }
-    .cs-ed-host {
+    .cs-ed-body {
+      display: flex;
       flex: 1;
       min-height: 0;
+    }
+    .cs-ed-host {
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
       display: flex;
+    }
+    .cs-ed-side {
+      display: flex;
+      flex: none;
+      width: 268px;
+      flex-direction: column;
+      gap: 10px;
+      overflow: auto;
+      padding: 12px 16px 16px;
+      border-left: 1px solid var(--dsw-alias-border-l1);
+      background: var(--dsw-alias-bg-layer-1);
+      font-size: 12px;
+    }
+    .cs-ed-side-empty {
+      padding: 12px 0;
+      color: var(--dsw-alias-label-tertiary);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    .cs-ed-side-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+    }
+    .cs-ed-side-tag {
+      flex: none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .cs-ed-side-text {
+      overflow: hidden;
+      color: var(--dsw-alias-label-tertiary);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cs-ed-label {
+      color: var(--dsw-alias-label-secondary);
+      font-size: 11px;
+      letter-spacing: 0.02em;
+    }
+    .cs-ed-mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      color: var(--dsw-alias-label-secondary);
+      word-break: break-all;
+    }
+    .cs-ed-note {
+      color: var(--dsw-alias-label-tertiary);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+    .cs-ed-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .cs-ed-field-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 0;
+    }
+    .cs-ed-prop {
+      flex: none;
+      width: 104px;
+      overflow: hidden;
+      color: var(--dsw-alias-label-secondary);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cs-ed-input {
+      flex: 1;
+      min-width: 0;
+      box-sizing: border-box;
+      padding: 4px 6px;
+      border: 1px solid var(--dsw-alias-border-l2);
+      border-radius: 5px;
+      background: var(--dsw-alias-bg-base);
+      color: inherit;
+      font: inherit;
+    }
+    .cs-ed-input:focus-visible {
+      border-color: var(--dsw-alias-brand-primary);
+      outline: none;
+    }
+    .cs-ed-mini {
+      flex: none;
+      padding: 2px 6px;
+      border: 1px solid var(--dsw-alias-border-l2);
+      border-radius: 5px;
+      background: transparent;
+      color: var(--dsw-alias-label-secondary);
+      font: inherit;
+      cursor: pointer;
+    }
+    .cs-ed-mini:hover {
+      border-color: var(--dsw-alias-brand-primary);
+      color: var(--dsw-alias-brand-primary);
+    }
+    .cs-ed-presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .cs-ed-hidden {
+      display: flex;
+      flex: none;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      align-items: center;
+      gap: 6px 8px;
+      max-height: 30%;
+      overflow: auto;
+      padding: 8px 20px 10px;
+      border-top: 1px solid var(--dsw-alias-border-l1);
+      background: var(--dsw-alias-bg-layer-1);
+    }
+    .cs-ed-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 240px;
+      padding: 3px 8px;
+      border: 1px solid var(--dsw-alias-border-l2);
+      border-radius: 5px;
+      background: var(--dsw-alias-bg-base);
+      color: var(--dsw-alias-label-secondary);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .cs-ed-chip:hover {
+      border-color: var(--dsw-alias-brand-primary);
+      color: var(--dsw-alias-brand-primary);
+    }
+    .cs-ed-chip-part {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cs-ed-chip-count {
+      flex: none;
+      margin-left: 5px;
+      color: var(--dsw-alias-label-tertiary);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
     }
     .cs-ed {
       position: relative;
@@ -913,26 +1287,20 @@ window.__ModuleLoader__.load({
     }
     .cs-ed-stage [data-dsh-screenshot-piece] {
       cursor: pointer;
-      outline: 1px dashed transparent;
+    }
+    .cs-ed-hit {
+      outline: 1px solid var(--dsw-alias-brand-primary) !important;
       outline-offset: -1px;
     }
-    .cs-ed-stage [data-dsh-screenshot-piece]:hover {
-      outline-color: var(--dsw-alias-brand-primary);
+    .cs-ed-sel {
+      outline: 1px solid var(--dsw-alias-brand-primary) !important;
+      outline-offset: -1px;
+      background-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent);
     }
-    .cs-ed-stage .cs-ed-on {
-      outline-color: transparent;
-    }
-    .cs-ed-stage .cs-ed-on:hover {
-      outline-color: var(--dsw-alias-brand-primary);
-      background-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, transparent);
-    }
-    .cs-ed-stage .cs-ed-off {
-      outline-color: var(--dsw-alias-border-l4);
-      opacity: 0.45;
-    }
-    .cs-ed-stage .cs-ed-off:hover {
-      outline-color: var(--dsw-alias-brand-primary);
-      opacity: 0.8;
+    .cs-ed-peek {
+      outline: 1px dashed var(--dsw-alias-brand-primary) !important;
+      outline-offset: -1px;
+      background-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent);
     }
     .cs-ed-field {
       outline: 1px dashed transparent;
@@ -1935,9 +2303,9 @@ window.__ModuleLoader__.load({
      * Every operation here works on the staged clone, never on the live tree: the composer the user may
      * be typing in, the scroll position and the app's own state stay untouched.
      *
-     * One table decides what counts as chrome, so the capture and the edit surface agree by construction:
-     * the capture deletes the pieces the reader switched off, and the edit surface keeps every one of
-     * them, marked, and counts a click on it.
+     * One table names the chrome this plugin knows about. It is not a closed list of what can be hidden —
+     * `dom/rules.js` applies the reader's own rules to anything else — it is the set of pieces that get a
+     * name, a default and a switch out of the box.
      */
 
 
@@ -2026,9 +2394,9 @@ window.__ModuleLoader__.load({
     }
 
     /** Every element one piece covers, in document order, without duplicates. */
-    function matches(clone, selectors) {
+    function pieceElements(clone, piece) {
       const found = []
-      for (const selector of selectors) {
+      for (const selector of piece.selectors) {
         for (const node of clone.querySelectorAll(selector)) {
           if (!found.includes(node)) found.push(node)
         }
@@ -2036,38 +2404,181 @@ window.__ModuleLoader__.load({
       return found
     }
 
+    // ===== dom/rules.js ==============================================
+
     /**
-     * Drop the chrome the reader switched off.
+     * What leaves the picture, expressed as rules instead of a fixed list.
      *
-     * Cropping cannot remove these because they sit in the transcript's flow; they are deleted by
-     * marker instead. A missing option falls back to the default, so a caller can pass a partial set.
+     * The plugin knows a handful of host markers by name, but a transcript is just a web page: a host
+     * release can add a row, and another plugin can paint one, and neither is on any list here. So the
+     * switches the reader used to flip are the built-in half of one mechanism, and anything they pick in
+     * the copy is the other half. Both are selectors applied to the same staged clone, which is why the
+     * edit surface and the capture cannot disagree.
      *
-     * @param clone - the staged copy.
-     * @param options - the reader's switches.
+     * Hiding is a declaration, not a deletion: the element stays in the copy with no box. A capture
+     * measures the transcript without it, while the edit surface can still point at the hole and put the
+     * element back where it was.
      */
-    function dropChrome(clone, options = OPTION_DEFAULTS) {
+
+
+    /** Every element one selector list covers, in document order, without duplicates. */
+    function collect(root, selectors) {
+      const found = []
+      for (const selector of selectors) {
+        let list
+        try {
+          list = root.querySelectorAll(selector)
+        } catch {
+          // A selector the browser refuses matches nothing; it must not abort the whole capture.
+          continue
+        }
+        for (const node of list) {
+          if (!found.includes(node)) found.push(node)
+        }
+      }
+      return found
+    }
+
+    /** Apply one declaration map inline. Inline wins over the host's sheet and survives serialization. */
+    function applyStyle(node, style) {
+      for (const prop of Object.keys(style)) node.style.setProperty(prop, style[prop])
+    }
+
+    /**
+     * Apply the built-in switches and the reader's rules to a staged copy.
+     *
+     * @param clone - the staged copy, already sanitized and pruned.
+     * @param options - the reader's switches and rules.
+     * @returns one entry per rule that matched, each holding the elements it covers, so a surface can
+     * list what is hidden and point at it.
+     */
+    function applyRules(clone, options = OPTION_DEFAULTS) {
+      const entries = []
       for (const piece of CHROME_PIECES) {
-        if (options[piece.option] !== true) continue
-        for (const node of matches(clone, piece.selectors)) node.remove()
+        const elements = collect(clone, piece.selectors)
+        if (elements.length === 0) continue
+        const hide = options[piece.option] === true
+        for (const node of elements) {
+          // The tag stays even when the piece is kept: the crop reads the composer through it.
+          node.setAttribute(PIECE_ATTRIBUTE, piece.id)
+          if (hide) applyStyle(node, HIDE_STYLE)
+        }
+        entries.push({ id: piece.id, kind: 'piece', option: piece.option, name: '', hide, elements })
+      }
+      for (const rule of options.rules ?? []) {
+        const elements = collect(clone, [rule.selector])
+        if (elements.length === 0) continue
+        for (const node of elements) {
+          if (rule.hide) applyStyle(node, HIDE_STYLE)
+          applyStyle(node, rule.style ?? {})
+          for (const name of Object.keys(rule.attrs ?? {})) {
+            const value = rule.attrs[name]
+            if (value === null) node.removeAttribute(name)
+            else node.setAttribute(name, value)
+          }
+        }
+        entries.push({ id: rule.id, kind: 'rule', selector: rule.selector, name: rule.name, hide: rule.hide, elements })
+      }
+      return { entries }
+    }
+
+    /** Attributes that are ours or already accounted for, and so never name an element. */
+    const IGNORED_ATTRIBUTES = new Set([PIECE_ATTRIBUTE, FIELD_ATTRIBUTE, EDITOR_ATTRIBUTE])
+
+    /** Whether one selector picks out exactly one element under the copy. */
+    function isUnique(root, selector) {
+      try {
+        return root.querySelectorAll(selector).length === 1
+      } catch {
+        return false
+      }
+    }
+
+    /** A marker attribute on one element, if the host put a usable one there. */
+    function markerOf(node) {
+      for (const name of node.getAttributeNames()) {
+        if (!name.startsWith('data-')) continue
+        if (IGNORED_ATTRIBUTES.has(name)) continue
+        return name
+      }
+      return null
+    }
+
+    /**
+     * A selector that picks the same element out of a freshly staged copy.
+     *
+     * The order is the one a debugger uses: an id, then a host marker, then the classes, then the path
+     * from the nearest anchor. The result is a CSS selector rather than a private key, so the reader can
+     * read it, edit it, and reuse it on an element this plugin never saw.
+     */
+    function elementKey(element, root) {
+      if (element === root) return ':scope'
+      if (typeof element.id === 'string' && element.id !== '') {
+        const byId = `#${element.id}`
+        if (isUnique(root, byId)) return byId
+      }
+      const marker = markerOf(element)
+      if (marker !== null) {
+        const byMarker = `[${marker}]`
+        if (isUnique(root, byMarker)) return byMarker
+      }
+      const tag = element.tagName.toLowerCase()
+      const classes = [...element.classList].filter((name) => !name.startsWith('cs-ed'))
+      if (classes.length > 0) {
+        const byClass = `${tag}${classes.map((name) => `.${name}`).join('')}`
+        if (isUnique(root, byClass)) return byClass
+      }
+
+      // Nothing names the element on its own, so walk up and stop at the first ancestor whose marker
+      // plus the path below it is already unique.
+      const steps = []
+      let node = element
+      while (node !== null && node !== root) {
+        const parent = node.parentElement
+        const index = parent === null ? 1 : [...parent.children].indexOf(node) + 1
+        steps.unshift(`${node.tagName.toLowerCase()}:nth-child(${index})`)
+        const anchor = markerOf(node)
+        if (anchor !== null) {
+          const anchored = [`[${anchor}]`, ...steps.slice(1)].join(' > ')
+          if (isUnique(root, anchored)) return anchored
+        }
+        node = parent
+      }
+      return steps.join(' > ')
+    }
+
+    /** The plain facts about one element, for the inspector. */
+    function describeElement(element) {
+      const attrs = {}
+      for (const name of element.getAttributeNames()) {
+        if (IGNORED_ATTRIBUTES.has(name)) continue
+        attrs[name] = element.getAttribute(name) ?? ''
+      }
+      const text = (element.textContent ?? '').replace(/\s+/g, ' ').trim()
+      return {
+        tag: element.tagName.toLowerCase(),
+        attrs,
+        text: text.length > 60 ? `${text.slice(0, 60)}…` : text,
+        children: element.children.length,
       }
     }
 
     /**
-     * Keep every piece in the clone and mark it instead, for the edit surface: what the reader switched
-     * off stays visible, dimmed, so it can be switched back on by clicking the place it occupies.
+     * A name the reader can recognise in a list, before they rename it.
      *
-     * @returns {Element[]} the elements carrying a piece tag.
+     * The host's own words come first when the element carries them: an `aria-label`, then the visible
+     * text, then the marker that made it interesting, and only then the tag.
      */
-    function paintChrome(clone, options = OPTION_DEFAULTS) {
-      const painted = []
-      for (const piece of CHROME_PIECES) {
-        for (const node of matches(clone, piece.selectors)) {
-          node.setAttribute(PIECE_ATTRIBUTE, piece.id)
-          node.classList.add(options[piece.option] === true ? 'cs-ed-off' : 'cs-ed-on')
-          painted.push(node)
-        }
-      }
-      return painted
+    function autoName(element) {
+      const label = element.getAttribute('aria-label')
+      if (label !== null && label.trim() !== '') return label.trim()
+      const text = (element.textContent ?? '').replace(/\s+/g, ' ').trim()
+      if (text !== '' && text.length <= 24) return text
+      const marker = markerOf(element)
+      if (marker !== null) return marker.replace(/^data-/, '').replace(/-/g, ' ')
+      const tag = element.tagName.toLowerCase()
+      const first = [...element.classList].find((name) => !name.startsWith('cs-ed'))
+      return first === undefined ? tag : `${tag}.${first}`
     }
 
     // ===== dom/band.js ===============================================
@@ -2729,11 +3240,12 @@ window.__ModuleLoader__.load({
         // pruning done before it shifts the indexes and leaves a deeper video or iframe behind, which the
         // SVG path then fails to decode.
         sanitizeClone(app, clone)
-        // Our own opt-out marker, then the chrome the reader switched off. The paging control and the
-        // composer are part of that same table now: both are visible on screen, so both are the reader's
-        // to keep rather than something the capture drops behind their back.
+        // Our own opt-out marker, then everything the reader hid. Hiding is a declaration, not a
+        // deletion, so this is also where the reader's own rules on arbitrary elements take effect: the
+        // edit surface ran the same function over the same kind of copy, which is what makes the preview
+        // and the picture agree.
         dropSkipped(clone)
-        dropChrome(clone, options)
+        applyRules(clone, options)
         if (pruneClone !== undefined) pruneClone(clone)
         // The reader's own header and footer go in after the band is pruned, so a one-turn capture carries
         // them too, and inside the clone, so the SVG serializer sees them.
@@ -2856,12 +3368,12 @@ window.__ModuleLoader__.load({
     /**
      * The edit surface: a stand-in conversation, laid out in the conversation's own place.
      *
-     * It is built exactly the way a capture is built — the same clone, the same chrome table, the same
-     * inserted blocks — with two differences: the chrome the reader switched off stays in the copy (dimmed
-     * and tagged, so a click brings it back), and the copy is laid out at full length inside a scrolling
-     * frame instead of being flattened into one tall canvas. What the reader sees while editing is
-     * therefore the very clone the renderer would paint, which is as close to "what you see is what you
-     * get" as a DOM copy gets.
+     * It is built exactly the way a capture is built — the same clone, the same rules, the same inserted
+     * blocks — with two differences: the copy is laid out at full length inside a scrolling frame instead
+     * of being flattened into one tall canvas, and every rule that hides an element is reversible here,
+     * because the element keeps its place in the copy with no box and the surface can point at the hole.
+     * What the reader sees while editing is therefore the very clone the renderer would paint, which is
+     * as close to "what you see is what you get" as a DOM copy gets.
      *
      * Nothing here writes to the live tree: the copy is a clone, so a click on a link or a button inside
      * it cannot reach the application.
@@ -2977,7 +3489,7 @@ window.__ModuleLoader__.load({
 
       sanitizeClone(app, clone)
       dropSkipped(clone)
-      paintChrome(clone, options)
+      const applied = applyRules(clone, options)
       const turns = clone.querySelectorAll(`[${TURN_ATTRIBUTE}]`).length
       const blocks = insertBlocks(clone, options, { ...RAW_META, turns }, labels)
 
@@ -3031,7 +3543,17 @@ window.__ModuleLoader__.load({
         parts.element.remove()
       }
 
-      return { element: parts.element, scroll: parts.scroll, clone, head: blocks.head, foot: blocks.foot, frame, destroy }
+      return {
+        element: parts.element,
+        scroll: parts.scroll,
+        clone,
+        head: blocks.head,
+        foot: blocks.foot,
+        entries: applied.entries,
+        frame,
+        frameElement: parts.frame,
+        destroy,
+      }
     }
 
     // ===== shell/status.js ===========================================
@@ -3266,18 +3788,23 @@ window.__ModuleLoader__.load({
     /**
      * The edit surface, as a component.
      *
-     * Two layers meet here. The frame, the toolbar and the menu are React; the picture between them is an
-     * element tree built imperatively by `dom/stage.js` — the same clone a capture renders, laid out at
+     * Two layers meet here. The frame, the inspector and the lists are React; the picture between them is
+     * an element tree built imperatively by `dom/stage.js` — the same clone a capture renders, laid out at
      * full length. That split is deliberate: the clone has to be a copy of the live application, so it is
-     * cloned from the DOM and then handed to a container ref, while everything around it is ordinary UI.
+     * cloned from the DOM and handed to a container ref, while everything around it is ordinary UI.
      *
-     * A click on the picture toggles the piece under the pointer. A click on an inserted field edits it in
-     * place. The list behind the right button carries the same switches plus the two that have no separate
-     * element (the divider and the meta line), so every option is reachable from the surface it affects.
+     * The surface is a small inspector rather than a form. Any element in the copy can be picked, named,
+     * hidden or restyled, because a transcript is a web page and the parts worth dropping are not knowable
+     * in advance: a host release adds rows, and another plugin paints its own. What the reader changed is
+     * kept as a rule — a selector plus declarations — and the capture runs the same rules over the same
+     * kind of copy, so the picture is what the surface showed.
+     *
+     * Hiding never deletes the element: it keeps its place in the copy with no box. That is what lets the
+     * list at the bottom point at the hole and put the element back.
      */
 
 
-    /** The name of one piece, for the tag a hidden part carries and for the menu row. */
+    /** The name of one built-in piece, for a chip and for the menu row. */
     function pieceLabel(t, id) {
       if (id === 'nav') return t('settings.piece.nav')
       if (id === 'attachments') return t('settings.piece.attachments')
@@ -3287,17 +3814,28 @@ window.__ModuleLoader__.load({
       if (id === 'handles') return t('settings.piece.handles')
       if (id === 'paging') return t('settings.piece.paging')
       if (id === 'composer') return t('settings.piece.composer')
-      if (id === 'head') return t('settings.piece.head')
-      if (id === 'foot') return t('settings.piece.foot')
-      if (id === 'meta') return t('settings.piece.meta')
       if (id === 'divider') return t('settings.piece.divider')
+      if (id === 'meta') return t('settings.piece.meta')
       return id
     }
 
-    /** The switch a piece toggles; the inserted blocks and the two shared rules are not chrome. */
-    function optionOf(pieceId) {
-      const found = CHROME_PIECES.find((piece) => piece.id === pieceId)
-      return found === undefined ? null : found.option
+    /** The name of one style bundle. */
+    function presetLabel(t, id) {
+      if (id === 'dim') return t('settings.editor.preset.dim')
+      if (id === 'mark') return t('settings.editor.preset.mark')
+      if (id === 'tight') return t('settings.editor.preset.tight')
+      if (id === 'plain') return t('settings.editor.preset.plain')
+      if (id === 'mono') return t('settings.editor.preset.mono')
+      if (id === 'small') return t('settings.editor.preset.small')
+      return id
+    }
+
+    /** One line in the hidden list: a built-in piece or a rule the reader wrote. */
+    function entryLabel(t, entry, options) {
+      if (entry.kind === 'piece') return pieceLabel(t, entry.id)
+      const rule = ruleFor(options, entry.selector)
+      const name = rule === null ? entry.name : rule.name
+      return name === '' ? entry.selector : name
     }
 
     /** The conversation the reader is looking at, or null when none is mounted. */
@@ -3327,24 +3865,45 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** Blur on Enter, so a field commits and the keyboard goes back to the picture. */
+    function commitOnEnter(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        event.currentTarget.blur()
+      }
+    }
+
     /**
      * The overlay.
      *
-     * `revision` is the only thing that rebuilds the clone: a switch changes the drawn picture, so the
-     * copy is made again, while typing into a field leaves the copy alone — the typed text is already in
-     * it, and rebuilding on every keystroke would take the caret with it.
+     * `revision` is the only thing that rebuilds the copy: a rule change changes the drawn picture, so the
+     * copy is made again, while typing into an inserted field leaves the copy alone — the typed text is
+     * already in it, and rebuilding on every keystroke would take the caret with it. The inspector keeps
+     * its own drafts for the same reason.
      */
     function CaptureEditor({ onClose }) {
       const t = useTranslate()
       const options = useOptions()
-      const optionsRef = useRef(options)
-      optionsRef.current = options
       const hostRef = useRef(null)
       const stageRef = useRef(null)
+      const timersRef = useRef([])
+      const hitRef = useRef(null)
+      const pickRef = useRef(false)
+      const selectionRef = useRef(null)
       const [revision, setRevision] = useState(0)
       const [pane, setPane] = useState(paneRect)
       const [missing, setMissing] = useState(false)
+      const [entries, setEntries] = useState([])
+      const [selection, setSelection] = useState(null)
+      const [pick, setPick] = useState(false)
       const [menu, setMenu] = useState(null)
+      const [draftProp, setDraftProp] = useState(STYLE_PROPS[0])
+      const [draftValue, setDraftValue] = useState('')
+      const [draftAttr, setDraftAttr] = useState('')
+      const [draftAttrValue, setDraftAttrValue] = useState('')
+
+      pickRef.current = pick
+      selectionRef.current = selection
 
       const labels = useMemo(
         () => ({
@@ -3355,6 +3914,8 @@ window.__ModuleLoader__.load({
         [t],
       )
 
+      const bump = () => setRevision((value) => value + 1)
+
       useEffect(() => {
         const anchor = findConversation()
         if (anchor === null) {
@@ -3362,17 +3923,28 @@ window.__ModuleLoader__.load({
           return undefined
         }
         setMissing(false)
-        const stage = buildStage(anchor, optionsRef.current, {
+        const stage = buildStage(anchor, readOptions(), {
           title: String(labels.title),
           subtitle: String(labels.subtitle),
           footer: String(labels.footer),
         })
         stageRef.current = stage
+        setEntries(stage.entries)
         if (hostRef.current !== null) {
-          hostRef.current.replaceChildren(stage.element)
+          const host = hostRef.current
+          host.replaceChildren(stage.element)
           // Only now does the copy have boxes: a detached tree measures as zero and the frame would
           // collapse to nothing, so the band is cut after mounting.
           stage.frame()
+          // The copy is as wide as the picture; the inspector side panel takes width away from the host.
+          // Shrinking with `zoom` keeps the copy's own layout intact, so what is shown is still the picture.
+          const frame = stage.frameElement
+          frame.style.zoom = ''
+          const width = frame.getBoundingClientRect().width
+          if (width > 0 && host.clientWidth > 0) {
+            const scale = Math.min(1, host.clientWidth / width)
+            frame.style.zoom = scale < 0.995 ? String(Math.max(0.35, scale)) : ''
+          }
         }
         return () => {
           stage.destroy()
@@ -3380,38 +3952,78 @@ window.__ModuleLoader__.load({
         }
       }, [revision, labels])
 
-      // Every piece carries the same affordance: a click flips its switch, a right click opens the list.
-      // Both are bound once per built copy, on the copy's own root, so nothing reaches the application.
+      // The copy is a clone, so nothing here can reach the application: a link or a button in it would
+      // still navigate, which is why clicks are intercepted rather than forwarded.
       useEffect(() => {
         const stage = stageRef.current
         if (stage === null) return undefined
         const root = stage.element
+        const clone = stage.clone
 
-        const toggle = (pieceId) => {
-          const option = optionOf(pieceId)
-          if (option === null) return
-          writeOptions({ [option]: optionsRef.current[option] !== true })
-          setRevision((value) => value + 1)
+        const elementOf = (event) => (event.target instanceof Element ? event.target : null)
+        const isField = (node) => node.closest(`[${FIELD_ATTRIBUTE}]`) !== null
+
+        const choose = (node) => {
+          const selector = elementKey(node, clone)
+          setSelection({ selector, tag: node.tagName.toLowerCase(), text: autoName(node) })
+          return selector
         }
 
         const onClick = (event) => {
-          const field = event.target instanceof Element ? event.target.closest(`[${FIELD_ATTRIBUTE}]`) : null
-          if (field !== null) return
+          const node = elementOf(event)
+          if (node === null) return
+          event.stopPropagation()
+          if (isField(node)) return
+          event.preventDefault()
+          choose(node)
+        }
+
+        const onDoubleClick = (event) => {
+          const node = elementOf(event)
+          if (node === null || isField(node)) return
           event.preventDefault()
           event.stopPropagation()
-          const piece = event.target instanceof Element ? event.target.closest(`[${PIECE_ATTRIBUTE}]`) : null
-          if (piece !== null) toggle(piece.getAttribute(PIECE_ATTRIBUTE))
+          const selector = choose(node)
+          const current = ruleFor(readOptions(), selector)
+          saveRule(selector, {
+            name: current === null ? autoName(node) : current.name,
+            hide: current === null ? true : current.hide !== true,
+          })
+          bump()
         }
 
         const onContextMenu = (event) => {
+          const node = elementOf(event)
+          if (node === null || isField(node)) return
           event.preventDefault()
           event.stopPropagation()
-          const piece = event.target instanceof Element ? event.target.closest(`[${PIECE_ATTRIBUTE}]`) : null
-          setMenu({ x: event.clientX, y: event.clientY, piece: piece === null ? null : piece.getAttribute(PIECE_ATTRIBUTE) })
+          // A right click on the header or the footer also reaches the two shared switches: the divider
+          // above the transcript and the metadata line under it have no element of their own.
+          const block =
+            node.closest(`[${HEAD_ATTRIBUTE}]`) !== null
+              ? 'head'
+              : node.closest(`[${FOOT_ATTRIBUTE}]`) !== null
+                ? 'foot'
+                : null
+          setMenu({ x: event.clientX, y: event.clientY, selector: choose(node), block })
+        }
+
+        const onMove = (event) => {
+          if (!pickRef.current) return
+          const node = elementOf(event)
+          if (hitRef.current !== null && hitRef.current !== node) {
+            hitRef.current.classList.remove('cs-ed-hit')
+            hitRef.current = null
+          }
+          if (node === null || isField(node)) return
+          node.classList.add('cs-ed-hit')
+          hitRef.current = node
         }
 
         const onInput = (event) => {
-          const field = event.target instanceof Element ? event.target.closest(`[${FIELD_ATTRIBUTE}]`) : null
+          const node = elementOf(event)
+          if (node === null) return
+          const field = node.closest(`[${FIELD_ATTRIBUTE}]`)
           if (field === null) return
           const name = field.getAttribute(FIELD_ATTRIBUTE)
           const text = field.textContent ?? ''
@@ -3421,7 +4033,9 @@ window.__ModuleLoader__.load({
         }
 
         const onKeyDown = (event) => {
-          const field = event.target instanceof Element ? event.target.closest(`[${FIELD_ATTRIBUTE}]`) : null
+          const node = elementOf(event)
+          if (node === null) return
+          const field = node.closest(`[${FIELD_ATTRIBUTE}]`)
           if (field !== null && event.key === 'Enter') {
             event.preventDefault()
             field.blur()
@@ -3429,34 +4043,60 @@ window.__ModuleLoader__.load({
         }
 
         root.addEventListener('click', onClick)
+        root.addEventListener('dblclick', onDoubleClick)
         root.addEventListener('contextmenu', onContextMenu)
+        root.addEventListener('mousemove', onMove)
         root.addEventListener('input', onInput)
         root.addEventListener('keydown', onKeyDown)
         return () => {
           root.removeEventListener('click', onClick)
+          root.removeEventListener('dblclick', onDoubleClick)
           root.removeEventListener('contextmenu', onContextMenu)
+          root.removeEventListener('mousemove', onMove)
           root.removeEventListener('input', onInput)
           root.removeEventListener('keydown', onKeyDown)
+          if (hitRef.current !== null) hitRef.current.classList.remove('cs-ed-hit')
+          hitRef.current = null
         }
       }, [revision])
 
-      // The tag a piece carries says how it stands, so a reader who only hovers still learns what a click
-      // would do. Rebuilt with the copy, because the copy is what the tag is attached to.
+      // The picked element is outlined where it sits, so the inspector always says which element it is
+      // talking about. A hidden element has no box, so it cannot be outlined — its chip locates it instead.
       useEffect(() => {
         const stage = stageRef.current
-        if (stage === null) return
-        const current = optionsRef.current
-        for (const node of stage.clone.querySelectorAll(`[${PIECE_ATTRIBUTE}]`)) {
-          const id = node.getAttribute(PIECE_ATTRIBUTE)
-          const option = optionOf(id)
-          const hidden = option !== null && current[option] === true
-          node.setAttribute('title', `${pieceLabel(t, id)} · ${hidden ? t('settings.editor.hide') : t('settings.editor.show')}`)
+        if (stage === null) return undefined
+        let marked = null
+        if (selection !== null) {
+          try {
+            marked = stage.clone.querySelector(selection.selector)
+          } catch {
+            marked = null
+          }
         }
-      }, [revision, t])
+        if (marked === null) return undefined
+        marked.classList.add('cs-ed-sel')
+        return () => marked.classList.remove('cs-ed-sel')
+      }, [selection, revision])
+
+      useEffect(
+        () => () => {
+          for (const timer of timersRef.current) window.clearTimeout(timer)
+          timersRef.current = []
+        },
+        [],
+      )
 
       useEffect(() => {
         const onKey = (event) => {
-          if (event.key === 'Escape') onClose()
+          if (event.key !== 'Escape') return
+          const active = document.activeElement
+          if (active instanceof HTMLElement && active.closest('.cs-ed-wrap') !== null) {
+            if (active.tagName === 'INPUT') {
+              active.blur()
+              return
+            }
+          }
+          onClose()
         }
         document.addEventListener('keydown', onKey)
         return () => document.removeEventListener('keydown', onKey)
@@ -3471,7 +4111,7 @@ window.__ModuleLoader__.load({
           window.clearTimeout(timer)
           timer = window.setTimeout(() => {
             setPane(paneRect())
-            setRevision((value) => value + 1)
+            bump()
           }, 220)
         }
         window.addEventListener('resize', onResize)
@@ -3486,47 +4126,289 @@ window.__ModuleLoader__.load({
       }, [])
 
       if (native === undefined) return null
-      const { Button, Menu } = native
+      const { Button, Menu, Switch } = native
 
-      const items = []
-      for (const piece of CHROME_PIECES) {
-        items.push({ id: piece.id, label: pieceLabel(t, piece.id) })
+      const rule = selection === null ? null : ruleFor(options, selection.selector)
+
+      /** Show one hidden entry again for a moment, in the place it came from. */
+      const peek = (entry) => {
+        for (const node of entry.elements ?? []) {
+          const previous = node.style.getPropertyValue('display')
+          node.style.setProperty('display', '')
+          node.classList.add('cs-ed-peek')
+          node.scrollIntoView({ block: 'center', inline: 'nearest' })
+          const timer = window.setTimeout(() => {
+            node.classList.remove('cs-ed-peek')
+            node.style.setProperty('display', previous)
+          }, PEEK_MS)
+          timersRef.current.push(timer)
+        }
       }
-      items.push({ type: 'separator' })
-      items.push({ id: 'divider', label: pieceLabel(t, 'divider') })
-      items.push({ id: 'meta', label: pieceLabel(t, 'meta') })
-      items.push({ type: 'separator' })
-      items.push({ id: 'reset', label: t('settings.reset'), danger: true })
 
-      const selectedIds = []
-      for (const piece of CHROME_PIECES) {
-        if (options[piece.option] === true) selectedIds.push(piece.id)
+      /** Put one hidden entry back into the picture. */
+      const restore = (entry) => {
+        if (entry.kind === 'piece') writeOptions({ [entry.option]: false })
+        else saveRule(entry.selector, { hide: false })
+        bump()
       }
-      if (options.divider) selectedIds.push('divider')
-      if (options.showMeta) selectedIds.push('meta')
 
-      const onSelect = (id) => {
+      const patchRule = (patch) => {
+        if (selection === null) return
+        const current = ruleFor(readOptions(), selection.selector)
+        saveRule(selection.selector, { name: current === null ? selection.text : current.name, ...patch })
+        bump()
+      }
+
+      const setStyle = (prop, value) => {
+        if (selection === null) return
+        const current = ruleFor(readOptions(), selection.selector)
+        const style = { ...(current === null ? {} : current.style) }
+        const text = value.trim()
+        if (text === '') delete style[prop]
+        else style[prop] = text
+        saveRule(selection.selector, { style })
+        bump()
+      }
+
+      const setAttr = (name, value) => {
+        if (selection === null) return
+        const current = ruleFor(readOptions(), selection.selector)
+        const attrs = { ...(current === null ? {} : current.attrs) }
+        if (value === '') delete attrs[name]
+        else attrs[name] = value
+        saveRule(selection.selector, { attrs })
+        bump()
+      }
+
+      const menuItems = []
+      if (menu !== null) {
+        const current = ruleFor(options, menu.selector)
+        const hidden = current !== null && current.hide === true
+        menuItems.push({ id: 'toggle', label: hidden ? t('settings.editor.restore') : t('settings.editor.hide') })
+        if (current !== null) menuItems.push({ id: 'remove', label: t('settings.editor.removeRule'), danger: true })
+        if (menu.block === 'head' || menu.block === 'foot') {
+          menuItems.push({ type: 'separator' })
+          menuItems.push({
+            id: menu.block === 'head' ? 'divider' : 'meta',
+            label: menu.block === 'head' ? pieceLabel(t, 'divider') : pieceLabel(t, 'meta'),
+          })
+        }
+        menuItems.push({ type: 'separator' })
+        menuItems.push({ id: 'reset', label: t('settings.reset'), danger: true })
+      }
+
+      const onMenu = (id) => {
+        const selector = menu === null ? null : menu.selector
         setMenu(null)
+        if (selector === null) return
         if (id === 'reset') {
           resetOptions()
-          setRevision((value) => value + 1)
+          bump()
           return
         }
         if (id === 'divider') {
-          writeOptions({ divider: optionsRef.current.divider !== true })
-          setRevision((value) => value + 1)
+          writeOptions({ divider: readOptions().divider !== true })
+          bump()
           return
         }
         if (id === 'meta') {
-          writeOptions({ showMeta: optionsRef.current.showMeta !== true })
-          setRevision((value) => value + 1)
+          writeOptions({ showMeta: readOptions().showMeta !== true })
+          bump()
           return
         }
-        const option = optionOf(id)
-        if (option === null) return
-        writeOptions({ [option]: optionsRef.current[option] !== true })
-        setRevision((value) => value + 1)
+        if (id === 'remove') {
+          dropRule(selector)
+          setSelection(null)
+          bump()
+          return
+        }
+        const current = ruleFor(readOptions(), selector)
+        saveRule(selector, { hide: current === null ? true : current.hide !== true })
+        bump()
       }
+
+      const hiddenEntries = []
+      for (const entry of entries) {
+        if (entry.kind === 'piece') {
+          if (options[entry.option] === true) hiddenEntries.push(entry)
+        } else if (ruleFor(options, entry.selector)?.hide === true) {
+          hiddenEntries.push(entry)
+        }
+      }
+
+      const styleKeys = rule === null ? [] : Object.keys(rule.style)
+      const attrKeys = rule === null ? [] : Object.keys(rule.attrs)
+      const detail = selection === null || stageRef.current === null ? null : describeSelected(stageRef.current.clone, selection.selector)
+
+      const side =
+        selection === null
+          ? h('div', { className: 'cs-ed-side-empty' }, t('settings.editor.side.none'))
+          : h(
+              'div',
+              { className: 'cs-ed-side' },
+              h(
+                'div',
+                { className: 'cs-ed-side-head' },
+                h('span', { className: 'cs-ed-side-tag' }, selection.tag),
+                h('span', { className: 'cs-ed-side-text' }, selection.text),
+              ),
+              h('div', { className: 'cs-ed-mono' }, selection.selector),
+              h(
+                'div',
+                { className: 'cs-ed-row' },
+                h('span', { className: 'cs-ed-label' }, t('settings.editor.side.hide')),
+                h(Switch, {
+                  checked: rule !== null && rule.hide === true,
+                  onChange: () => patchRule({ hide: rule === null ? true : rule.hide !== true }),
+                }),
+              ),
+              h(
+                'div',
+                { className: 'cs-ed-field-row' },
+                h('div', { className: 'cs-ed-label' }, t('settings.editor.side.name')),
+                h('input', {
+                  className: 'cs-ed-input',
+                  defaultValue: rule === null ? selection.text : rule.name,
+                  key: `name-${selection.selector}-${rule === null ? '' : rule.name}`,
+                  onKeyDown: commitOnEnter,
+                  onBlur: (event) => patchRule({ name: event.target.value }),
+                }),
+              ),
+              h('div', { className: 'cs-ed-label' }, t('settings.editor.side.presets')),
+              h(
+                'div',
+                { className: 'cs-ed-presets' },
+                ...RULE_PRESETS.map((preset) =>
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'cs-ed-mini',
+                      key: preset.id,
+                      onClick: () => {
+                        const current = ruleFor(readOptions(), selection.selector)
+                        saveRule(selection.selector, {
+                          style: { ...(current === null ? {} : current.style), ...preset.style },
+                        })
+                        bump()
+                      },
+                    },
+                    presetLabel(t, preset.id),
+                  ),
+                ),
+              ),
+              h('div', { className: 'cs-ed-label' }, t('settings.editor.side.style')),
+              ...styleKeys.map((prop) =>
+                h(
+                  'div',
+                  { className: 'cs-ed-row', key: `style-${prop}` },
+                  h('span', { className: 'cs-ed-prop', title: prop }, prop),
+                  h('input', {
+                    className: 'cs-ed-input',
+                    defaultValue: rule.style[prop],
+                    onKeyDown: commitOnEnter,
+                    onBlur: (event) => setStyle(prop, event.target.value),
+                  }),
+                  h(
+                    'button',
+                    { type: 'button', className: 'cs-ed-mini', onClick: () => setStyle(prop, ''), title: t('settings.editor.side.remove') },
+                    '×',
+                  ),
+                ),
+              ),
+              h(
+                'div',
+                { className: 'cs-ed-row' },
+                h(
+                  'select',
+                  {
+                    className: 'cs-ed-input',
+                    value: draftProp,
+                    onChange: (event) => setDraftProp(event.target.value),
+                  },
+                  ...STYLE_PROPS.map((prop) => h('option', { key: prop, value: prop }, prop)),
+                ),
+                h('input', {
+                  className: 'cs-ed-input',
+                  placeholder: t('settings.editor.side.value'),
+                  value: draftValue,
+                  onChange: (event) => setDraftValue(event.target.value),
+                  onKeyDown: (event) => {
+                    if (event.key !== 'Enter') return
+                    setStyle(draftProp, draftValue)
+                    setDraftValue('')
+                  },
+                }),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'cs-ed-mini',
+                    onClick: () => {
+                      setStyle(draftProp, draftValue)
+                      setDraftValue('')
+                    },
+                  },
+                  t('settings.editor.side.add'),
+                ),
+              ),
+              h('div', { className: 'cs-ed-label' }, t('settings.editor.side.attrs')),
+              ...attrKeys.map((name) =>
+                h(
+                  'div',
+                  { className: 'cs-ed-row', key: `attr-${name}` },
+                  h('span', { className: 'cs-ed-prop', title: name }, name),
+                  h('input', {
+                    className: 'cs-ed-input',
+                    defaultValue: rule.attrs[name] ?? '',
+                    onKeyDown: commitOnEnter,
+                    onBlur: (event) => setAttr(name, event.target.value),
+                  }),
+                  h(
+                    'button',
+                    { type: 'button', className: 'cs-ed-mini', onClick: () => setAttr(name, ''), title: t('settings.editor.side.remove') },
+                    '×',
+                  ),
+                ),
+              ),
+              h(
+                'div',
+                { className: 'cs-ed-row' },
+                h('input', {
+                  className: 'cs-ed-input',
+                  placeholder: 'data-x',
+                  value: draftAttr,
+                  onChange: (event) => setDraftAttr(event.target.value),
+                }),
+                h('input', {
+                  className: 'cs-ed-input',
+                  placeholder: t('settings.editor.side.value'),
+                  value: draftAttrValue,
+                  onChange: (event) => setDraftAttrValue(event.target.value),
+                  onKeyDown: (event) => {
+                    if (event.key !== 'Enter') return
+                    setAttr(draftAttr.trim(), draftAttrValue)
+                    setDraftAttr('')
+                    setDraftAttrValue('')
+                  },
+                }),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'cs-ed-mini',
+                    onClick: () => {
+                      setAttr(draftAttr.trim(), draftAttrValue)
+                      setDraftAttr('')
+                      setDraftAttrValue('')
+                    },
+                  },
+                  t('settings.editor.side.add'),
+                ),
+              ),
+              detail === null ? null : h('div', { className: 'cs-ed-note' }, detail),
+              pureRuleNote(t),
+            )
 
       return h(
         'div',
@@ -3549,25 +4431,87 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'cs-ed-actions' },
-            h(Button, { variant: 'ghost', size: 'sm', onClick: () => { resetOptions(); setRevision((value) => value + 1) } }, t('settings.reset')),
+            h(
+              Button,
+              {
+                variant: pick ? 'primary' : 'ghost',
+                size: 'sm',
+                onClick: () => {
+                  setPick((value) => !value)
+                  if (hitRef.current !== null) hitRef.current.classList.remove('cs-ed-hit')
+                  hitRef.current = null
+                },
+              },
+              t('settings.editor.pick'),
+            ),
+            h(Button, { variant: 'ghost', size: 'sm', onClick: () => { resetOptions(); setSelection(null); bump() } }, t('settings.reset')),
             h(Button, { variant: 'primary', size: 'sm', onClick: onClose }, t('settings.editor.done')),
           ),
         ),
-        h('div', { className: 'cs-ed-host', ref: hostRef }),
+        h(
+          'div',
+          { className: 'cs-ed-body' },
+          h('div', { className: 'cs-ed-host', ref: hostRef }),
+          side,
+        ),
+        h(
+          'div',
+          { className: 'cs-ed-hidden' },
+          h('span', { className: 'cs-ed-label' }, t('settings.editor.hidden')),
+          hiddenEntries.length === 0
+            ? h('span', { className: 'cs-ed-note' }, t('settings.editor.hiddenEmpty'))
+            : null,
+          ...hiddenEntries.map((entry) =>
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'cs-ed-chip',
+                key: `${entry.kind}-${entry.id}`,
+                title: t('settings.editor.hiddenHint'),
+                onClick: () => peek(entry),
+                onDoubleClick: () => restore(entry),
+              },
+              h('span', { className: 'cs-ed-chip-part' }, entryLabel(t, entry, options)),
+              entry.elements.length > 1 ? h('span', { className: 'cs-ed-chip-count' }, `${entry.elements.length}`) : null,
+            ),
+          ),
+        ),
         menu === null
           ? null
           : h(Menu, {
               open: true,
               anchorPoint: { x: menu.x, y: menu.y },
-              items,
-              selectedIds,
-              onSelect,
+              items: menuItems,
+              onSelect: onMenu,
               onClose: () => setMenu(null),
               portal: true,
               align: 'start',
               side: 'bottom',
             }),
       )
+    }
+
+    /** The element's own facts, as one line of small print under the controls. */
+    function describeSelected(clone, selector) {
+      let node
+      try {
+        node = clone.querySelector(selector)
+      } catch {
+        node = null
+      }
+      if (node === null) return null
+      const facts = describeElement(node)
+      const parts = [facts.tag]
+      if (facts.children > 0) parts.push(`${facts.children} children`)
+      const names = Object.keys(facts.attrs)
+      if (names.length > 0) parts.push(names.join(' '))
+      return parts.join(' · ')
+    }
+
+    /** A reminder that nothing is applied until the reader means it: a rule, not a temporary edit. */
+    function pureRuleNote(t) {
+      return h('div', { className: 'cs-ed-note' }, t('settings.editor.side.ruleNote'))
     }
 
     /** The mounted root, so opening twice cannot stack two surfaces. */

@@ -1,12 +1,12 @@
 /**
  * The edit surface: a stand-in conversation, laid out in the conversation's own place.
  *
- * It is built exactly the way a capture is built — the same clone, the same chrome table, the same
- * inserted blocks — with two differences: the chrome the reader switched off stays in the copy (dimmed
- * and tagged, so a click brings it back), and the copy is laid out at full length inside a scrolling
- * frame instead of being flattened into one tall canvas. What the reader sees while editing is
- * therefore the very clone the renderer would paint, which is as close to "what you see is what you
- * get" as a DOM copy gets.
+ * It is built exactly the way a capture is built — the same clone, the same rules, the same inserted
+ * blocks — with two differences: the copy is laid out at full length inside a scrolling frame instead
+ * of being flattened into one tall canvas, and every rule that hides an element is reversible here,
+ * because the element keeps its place in the copy with no box and the surface can point at the hole.
+ * What the reader sees while editing is therefore the very clone the renderer would paint, which is
+ * as close to "what you see is what you get" as a DOM copy gets.
  *
  * Nothing here writes to the live tree: the copy is a clone, so a click on a link or a button inside
  * it cannot reach the application.
@@ -22,7 +22,8 @@ import {
   TURN_ATTRIBUTE,
 } from '../shell/const.js'
 import { pieceBottom } from './band.js'
-import { dropSkipped, paintChrome, sanitizeClone } from './clone.js'
+import { dropSkipped, sanitizeClone } from './clone.js'
+import { applyRules } from './rules.js'
 import { RAW_META, insertBlocks } from './inserts.js'
 import { resolveBackground } from './capture.js'
 
@@ -135,7 +136,7 @@ export function buildStage(anchor, options, labels) {
 
   sanitizeClone(app, clone)
   dropSkipped(clone)
-  paintChrome(clone, options)
+  const applied = applyRules(clone, options)
   const turns = clone.querySelectorAll(`[${TURN_ATTRIBUTE}]`).length
   const blocks = insertBlocks(clone, options, { ...RAW_META, turns }, labels)
 
@@ -189,5 +190,15 @@ export function buildStage(anchor, options, labels) {
     parts.element.remove()
   }
 
-  return { element: parts.element, scroll: parts.scroll, clone, head: blocks.head, foot: blocks.foot, frame, destroy }
+  return {
+    element: parts.element,
+    scroll: parts.scroll,
+    clone,
+    head: blocks.head,
+    foot: blocks.foot,
+    entries: applied.entries,
+    frame,
+    frameElement: parts.frame,
+    destroy,
+  }
 }

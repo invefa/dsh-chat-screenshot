@@ -169,3 +169,75 @@ export const TO_BOTTOM_SLOT = '[class*="toBottomSlot"]'
  * for information that only helps while the host's layout is being matched.
  */
 export const DEBUG_MEASURE = false
+
+/**
+ * Rules the reader writes on arbitrary elements.
+ *
+ * A rule is a selector plus what to do with what it matches, so the picture is not limited to the
+ * chrome this plugin happens to know: a host release that adds a row, and another plugin that paints
+ * one, are both reachable. The caps exist because the rules are stored in the page and applied to
+ * every capture: a pasted wall of CSS would be paid for on each shot.
+ */
+export const MAX_RULES = 40
+export const RULE_NAME_CHARS = 40
+export const RULE_SELECTOR_CHARS = 240
+export const RULE_VALUE_CHARS = 120
+export const RULE_ATTR_CHARS = 60
+
+/**
+ * The properties the element inspector offers.
+ *
+ * These are the ones a transcript actually needs to be re-shaped for a picture: what is drawn, how
+ * loud it is, how much room it takes and how it aligns. Inline declarations win over the host's
+ * stylesheet, and they survive serialization into the SVG, which is what makes a preview and a
+ * capture show the same thing.
+ */
+export const STYLE_PROPS = [
+  'display',
+  'visibility',
+  'opacity',
+  'color',
+  'background',
+  'border',
+  'border-radius',
+  'box-shadow',
+  'padding',
+  'margin',
+  'gap',
+  'font-size',
+  'font-weight',
+  'font-family',
+  'line-height',
+  'letter-spacing',
+  'text-align',
+  'text-decoration',
+  'white-space',
+  'width',
+  'max-width',
+  'height',
+  'max-height',
+  'overflow',
+  'align-self',
+  'justify-content',
+  'filter',
+  'transform',
+]
+
+/** Style bundles offered as one click in the inspector. */
+export const RULE_PRESETS = [
+  { id: 'dim', style: { opacity: '0.35' } },
+  { id: 'mark', style: { outline: '1px dashed currentColor' } },
+  { id: 'tight', style: { padding: '0', margin: '0' } },
+  { id: 'plain', style: { background: 'transparent', border: '0', 'box-shadow': 'none' } },
+  { id: 'mono', style: { 'font-family': 'ui-monospace, SFMono-Regular, Menlo, monospace' } },
+  { id: 'small', style: { 'font-size': '12px', 'line-height': '1.35' } },
+]
+
+/** How long a hidden element is shown in place when its chip is clicked. */
+export const PEEK_MS = 1600
+
+/**
+ * What the capture's own hiding does to a matched element: it stays in the copy with no box, so a
+ * capture measures the transcript without it while the edit surface can still show where it was.
+ */
+export const HIDE_STYLE = { display: 'none' }

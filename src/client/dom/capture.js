@@ -22,7 +22,8 @@ import {
   TURN_ATTRIBUTE,
 } from '../shell/const.js'
 import { readOptions } from '../shell/options.js'
-import { dropChrome, dropSkipped, sanitizeClone } from './clone.js'
+import { dropSkipped, sanitizeClone } from './clone.js'
+import { applyRules } from './rules.js'
 import { insertBlocks, insertMeta } from './inserts.js'
 import { pieceBottom, planCrop } from './band.js'
 import { renderStage } from '../render/index.js'
@@ -121,11 +122,12 @@ export async function captureConversation(anchor, pruneClone) {
     // pruning done before it shifts the indexes and leaves a deeper video or iframe behind, which the
     // SVG path then fails to decode.
     sanitizeClone(app, clone)
-    // Our own opt-out marker, then the chrome the reader switched off. The paging control and the
-    // composer are part of that same table now: both are visible on screen, so both are the reader's
-    // to keep rather than something the capture drops behind their back.
+    // Our own opt-out marker, then everything the reader hid. Hiding is a declaration, not a
+    // deletion, so this is also where the reader's own rules on arbitrary elements take effect: the
+    // edit surface ran the same function over the same kind of copy, which is what makes the preview
+    // and the picture agree.
     dropSkipped(clone)
-    dropChrome(clone, options)
+    applyRules(clone, options)
     if (pruneClone !== undefined) pruneClone(clone)
     // The reader's own header and footer go in after the band is pruned, so a one-turn capture carries
     // them too, and inside the clone, so the SVG serializer sees them.

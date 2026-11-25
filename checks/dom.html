@@ -46,13 +46,15 @@
       </div>
     </div>
     <script type="module">
+
       import { readPaging, classifyPaging, hasOlderPages, findLoadOlder } from '../src/client/dom/paging.js'
-      import { dropChrome, paintChrome } from '../src/client/dom/clone.js'
+      import { applyRules, autoName, elementKey } from '../src/client/dom/rules.js'
       import { buildStage } from '../src/client/dom/stage.js'
       import { insertBlocks, insertMeta, fillTokens } from '../src/client/dom/inserts.js'
       import { planCrop } from '../src/client/dom/band.js'
       import { normalizeOptions } from '../src/client/shell/options.js'
       import { turnList, pruneTurns } from '../src/client/dom/turn.js'
+      window.addEventListener('error', (event) => { window.__fatal = String(event.message) + ' @' + event.lineno })
 
       const results = []
       const check = (name, ok, detail) => results.push({ name, ok: ok === true, detail: String(detail) })
@@ -92,63 +94,103 @@
       check('the end of the history offers no pages', hasOlderPages(scroller) === false, 'claims pages')
       check('the control is still in the layout', scroller.querySelector('[data-chat-history]') !== null, 'unmounted')
 
-      // --- chrome pruning follows the switches ----------------------------------------------------
+      // --- chrome follows the switches, by hiding what they name ----------------------------------
       const cloneAll = scroller.cloneNode(true)
-      dropChrome(cloneAll, normalizeOptions({}))
+      applyRules(cloneAll, normalizeOptions({}))
+      const shown = (root, selector) =>
+        Array.from(root.querySelectorAll(selector)).filter((el) => el.style.display !== 'none').length
       const all = {
-        clock: cloneAll.querySelectorAll('[data-clock]').length,
-        step: cloneAll.querySelectorAll('[data-step-process]').length,
-        files: cloneAll.querySelectorAll('[data-message-attachments]').length,
-        nav: cloneAll.querySelectorAll('nav').length,
-        handle: cloneAll.querySelectorAll('[data-width-handle]').length,
-        bottom: cloneAll.querySelectorAll('.toBottomSlot').length,
+        clock: shown(cloneAll, '[data-clock]'),
+        step: shown(cloneAll, '[data-step-process]'),
+        files: shown(cloneAll, '[data-message-attachments]'),
+        nav: shown(cloneAll, 'nav'),
+        handle: shown(cloneAll, '[data-width-handle]'),
+        bottom: shown(cloneAll, '.toBottomSlot'),
       }
-      check('defaults drop the clock, nav, handles and the bottom button', all.clock === 0 && all.nav === 0 && all.handle === 0 && all.bottom === 0, JSON.stringify(all))
+      check('defaults hide the clock, nav, handles and the bottom button', all.clock === 0 && all.nav === 0 && all.handle === 0 && all.bottom === 0, JSON.stringify(all))
       check('defaults keep the thinking row and the attachments', all.step === 1 && all.files === 1, JSON.stringify(all))
+      check(
+        'a hidden part stays in the copy',
+        cloneAll.querySelectorAll('[data-clock]').length === 2,
+        String(cloneAll.querySelectorAll('[data-clock]').length),
+      )
 
       const cloneKept = scroller.cloneNode(true)
-      dropChrome(cloneKept, normalizeOptions({ hideClock: false, hideProcess: false, hideAttachments: false }))
+      applyRules(cloneKept, normalizeOptions({ hideClock: false, hideProcess: false, hideAttachments: false }))
       const kept = {
-        clock: cloneKept.querySelectorAll('[data-clock]').length,
-        step: cloneKept.querySelectorAll('[data-step-process]').length,
-        files: cloneKept.querySelectorAll('[data-message-attachments]').length,
+        clock: shown(cloneKept, '[data-clock]'),
+        step: shown(cloneKept, '[data-step-process]'),
+        files: shown(cloneKept, '[data-message-attachments]'),
       }
       check('the switches keep what they name', kept.clock === 2 && kept.step === 1 && kept.files === 1, JSON.stringify(kept))
 
-      // --- the edit surface keeps what the switches name, dimmed but present -----------------------
-      const painted = scroller.cloneNode(true)
-      const marked = paintChrome(painted, normalizeOptions({}))
-      const pieceIds = Array.from(new Set(marked.map((el) => el.getAttribute('data-dsh-screenshot-piece')))).sort()
+      // --- the same call describes what it did, for the inspector --------------------------------
+      const described = scroller.cloneNode(true)
+      const applied = applyRules(described, normalizeOptions({}))
+      const byId = {}
+      for (const entry of applied.entries) byId[entry.id] = entry
       check(
-        'every part the switches name is in the copy',
-        pieceIds.join(',') === 'attachments,clock,composer,handles,nav,paging,process,toBottom',
-        pieceIds.join(','),
+        'the built-in names are reported as entries',
+        byId.clock !== undefined && byId.clock.elements.length === 2 && byId.paging !== undefined && byId.composer !== undefined,
+        Object.keys(byId).join(','),
       )
       check(
-        'a switched-off part stays in the copy',
-        painted.querySelectorAll('[data-clock]').length === 2,
-        String(painted.querySelectorAll('[data-clock]').length),
+        'an entry knows whether it is hidden',
+        byId.clock.hide === true && byId.process.hide === false,
+        `${byId.clock.hide}/${byId.process.hide}`,
       )
       check(
-        'a switched-off part is dimmed rather than gone',
-        Array.from(painted.querySelectorAll('[data-clock]')).every((el) => el.classList.contains('cs-ed-off')),
-        'missing the dimming class',
+        'the copy says which part each element is',
+        described.querySelector('[data-clock]')?.getAttribute('data-dsh-screenshot-piece') === 'clock',
+        described.querySelector('[data-clock]')?.getAttribute('data-dsh-screenshot-piece') ?? 'null',
       )
+
+      // --- a rule names any element at all ------------------------------------------------------
+      const ruleTarget = scroller.querySelector('[data-chat-turn]')
+      const ruleKey = elementKey(ruleTarget, scroller)
+      check('any element gets a stable key', typeof ruleKey === 'string' && ruleKey.length > 0, String(ruleKey))
       check(
-        'a part left on is marked as shown',
-        painted.querySelector('[data-step-process]')?.classList.contains('cs-ed-on') === true,
-        'not marked',
+        'the key resolves back to the same element',
+        (() => {
+          try {
+            return scroller.querySelector(ruleKey) === ruleTarget
+          } catch {
+            return false
+          }
+        })(),
+        ruleKey,
       )
+      const ruled = scroller.cloneNode(true)
+      applyRules(
+        ruled,
+        normalizeOptions({
+          rules: [
+            { selector: ruleKey, name: '首轮', hide: true, style: { opacity: '0.5' }, attrs: { 'data-mark': 'yes' } },
+            { selector: '.nothing-here', hide: true },
+            { selector: '  ', hide: true },
+          ],
+        }),
+      )
+      const ruledTarget = ruled.querySelector(ruleKey)
+      check('a rule hides the element it names', ruledTarget?.style.display === 'none', ruledTarget?.style.display ?? 'null')
+      check('a rule also carries style', ruledTarget?.style.opacity === '0.5', ruledTarget?.style.opacity ?? 'null')
+      check('a rule also carries attributes', ruledTarget?.getAttribute('data-mark') === 'yes', ruledTarget?.getAttribute('data-mark') ?? 'null')
       check(
-        'the copy says which part it is',
-        painted.querySelector('[data-clock]')?.getAttribute('data-dsh-screenshot-piece') === 'clock',
-        painted.querySelector('[data-clock]')?.getAttribute('data-dsh-screenshot-piece') ?? 'null',
+        'the rule names only what it found',
+        applied.entries.filter((entry) => entry.kind === 'rule').length === 0,
+        'a rule leaked into another run',
       )
-      check(
-        'the paging control and the composer are parts too',
-        painted.querySelector('[data-chat-history]') !== null && painted.querySelector('[data-composer-seat]') !== null,
-        'not tagged',
-      )
+
+      // --- the automatic name falls back in a predictable order ----------------------------------
+      const named = scroller.querySelector('[data-clock]')
+      check('an automatic name prefers readable text', autoName(named).length > 0 && !autoName(named).startsWith('['), autoName(named))
+      const silent = document.createElement('div')
+      silent.setAttribute('data-some-marker', '')
+      scroller.appendChild(silent)
+      check('a silent element falls back to its marker', autoName(silent) === 'some marker', autoName(silent))
+      silent.setAttribute('aria-label', '有名字')
+      check('an explicit label wins', autoName(silent) === '有名字', autoName(silent))
+      silent.remove()
 
       // --- the edit surface, built in the conversation's place --------------------------------------
       const stage = buildStage(scroller.querySelector('[data-chat-turn]'), normalizeOptions({}), {
@@ -195,7 +237,7 @@
 
       const clone = scroller.cloneNode(true)
       const options = normalizeOptions({ title: '标题 {turns}', footer: '页脚', align: 'center', showMeta: true })
-      dropChrome(clone, options)
+      applyRules(clone, options)
       clone.style.height = 'auto'
       clone.style.overflow = 'visible'
       holder.appendChild(clone)

@@ -57,27 +57,35 @@ A successful copy flashes a check over the icon. When the clipboard is unavailab
 Settings > ChatScreenshot holds one button, three layout rows and a reset. The button opens the editor
 **over the conversation itself**: the transcript stays where it is and the picture is shaped in place.
 
-- **Click a piece to hide it; click it again to bring it back.** The piece does not disappear while you
-  edit — it dims and stays where the picture would draw it, so a hidden control is never an invisible
-  setting. All eight answer this way: the turn navigator, the attachment strip, the thinking and tool
-  rows, the clock and action row, the back-to-bottom button, the drag handles, the load-earlier control
-  and the composer.
-- **Type the header and the footer straight into the picture.** Both blocks are drawn in the copy with
-  their placeholders, so the prose is edited where it lands. Both accept `{turns}`, `{date}` and
-  `{time}`.
-- **Right-click anywhere in the editor** for the same switches as a menu, plus the divider, the metadata
-  line and "Restore defaults".
-- **Done** closes the editor. Every change applies to the next capture; nothing needs a reload.
+The editor is not a form about the picture; it is the picture. The copy shown there is built by the
+capture's own path, so what is on screen while editing is what lands in the PNG.
 
-The editor is the capture's own clone, mounted at full length in a scrolling frame over the
-conversation — the same code path the renderer paints, not a second drawing of it. Nothing is written
-to the live conversation: the copy is a clone, so a click inside it cannot reach the application.
+- **Any element is a candidate.** The eight controls the plugin used to name are now only a starting
+  vocabulary: double-click any element in the copy to hide it, double-click it again to bring it back.
+  Whatever a plugin or a future version adds to the transcript is reachable the same way.
+- **Hiding is a declaration, not a deletion.** A hidden element keeps its place in the copy and takes
+  no room in the picture, so what you hide is what the capture measures.
+- **The hidden bar keeps the list.** Everything hidden is pinned along the bottom of the editor: click
+  an entry to flash it back into place, double-click to restore it.
+- **The side panel edits the selected element.** Click anything to select it and the panel shows its
+  tag, selector, a hide switch, an editable name, style presets (dim, outline, trim spacing, drop
+  background, monospace, small type) and free-form style and attribute rows. Changes apply to the
+  next capture, and the selector keeps them attached to the same elements.
+- **Type the header and the footer straight into the picture.** Both blocks are drawn in the copy with
+  their placeholders. Both accept `{turns}`, `{date}` and `{time}`.
+- **Right-click anywhere** for hide, restore, "remove the rule for this element", the divider, the
+  metadata line and "Restore defaults".
+- **Done** closes the editor.
+
+A rule is `{ selector, name, hide, style, attrs }`; the selector is what carries it, so a rule keeps
+working for every element the selector matches. Choices live in this browser's `localStorage` under
+`chat-screenshot.options`; the plugin registers no host configuration and stores nothing on the server.
+A stored value that no longer matches an offered one falls back to the nearest choice, and "Restore
+defaults" brings back the picture the plugin took before the settings existed.
 
 Behind the editor, three rows set alignment, outer margin and resolution. A header is drawn above the
 first turn and a footer below the last one, inside the cropped area, so they survive the same render
 path as the conversation.
-
-Choices live in this browser's `localStorage` under `chat-screenshot.options`; the plugin registers no host configuration and stores nothing on the server. A stored value that no longer matches an offered one falls back to the nearest choice, and "Restore defaults" brings back the picture the plugin took before the settings existed.
 
 The menu, the switches and the fields are the host's own components, read from the
 `@deepseek-ai/dsh-client-ui-primitives` seed word, so the editor keeps the theme, the focus handling and

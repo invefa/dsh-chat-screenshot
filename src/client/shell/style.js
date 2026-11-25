@@ -235,10 +235,167 @@ export const STYLES = String.raw`
   align-items: center;
   margin-left: auto;
 }
-.cs-ed-host {
+.cs-ed-body {
+  display: flex;
   flex: 1;
   min-height: 0;
+}
+.cs-ed-host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
+}
+.cs-ed-side {
+  display: flex;
+  flex: none;
+  width: 268px;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  padding: 12px 16px 16px;
+  border-left: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+  font-size: 12px;
+}
+.cs-ed-side-empty {
+  padding: 12px 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.cs-ed-side-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.cs-ed-side-tag {
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+.cs-ed-side-text {
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-ed-label {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+.cs-ed-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  word-break: break-all;
+}
+.cs-ed-note {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.cs-ed-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.cs-ed-field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.cs-ed-prop {
+  flex: none;
+  width: 104px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-ed-input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 5px;
+  background: var(--dsw-alias-bg-base);
+  color: inherit;
+  font: inherit;
+}
+.cs-ed-input:focus-visible {
+  border-color: var(--dsw-alias-brand-primary);
+  outline: none;
+}
+.cs-ed-mini {
+  flex: none;
+  padding: 2px 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.cs-ed-mini:hover {
+  border-color: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-brand-primary);
+}
+.cs-ed-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cs-ed-hidden {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: center;
+  gap: 6px 8px;
+  max-height: 30%;
+  overflow: auto;
+  padding: 8px 20px 10px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+}
+.cs-ed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 3px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 5px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.cs-ed-chip:hover {
+  border-color: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-brand-primary);
+}
+.cs-ed-chip-part {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-ed-chip-count {
+  flex: none;
+  margin-left: 5px;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
 }
 .cs-ed {
   position: relative;
@@ -265,26 +422,20 @@ export const STYLES = String.raw`
 }
 .cs-ed-stage [data-dsh-screenshot-piece] {
   cursor: pointer;
-  outline: 1px dashed transparent;
+}
+.cs-ed-hit {
+  outline: 1px solid var(--dsw-alias-brand-primary) !important;
   outline-offset: -1px;
 }
-.cs-ed-stage [data-dsh-screenshot-piece]:hover {
-  outline-color: var(--dsw-alias-brand-primary);
+.cs-ed-sel {
+  outline: 1px solid var(--dsw-alias-brand-primary) !important;
+  outline-offset: -1px;
+  background-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent);
 }
-.cs-ed-stage .cs-ed-on {
-  outline-color: transparent;
-}
-.cs-ed-stage .cs-ed-on:hover {
-  outline-color: var(--dsw-alias-brand-primary);
-  background-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, transparent);
-}
-.cs-ed-stage .cs-ed-off {
-  outline-color: var(--dsw-alias-border-l4);
-  opacity: 0.45;
-}
-.cs-ed-stage .cs-ed-off:hover {
-  outline-color: var(--dsw-alias-brand-primary);
-  opacity: 0.8;
+.cs-ed-peek {
+  outline: 1px dashed var(--dsw-alias-brand-primary) !important;
+  outline-offset: -1px;
+  background-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent);
 }
 .cs-ed-field {
   outline: 1px dashed transparent;

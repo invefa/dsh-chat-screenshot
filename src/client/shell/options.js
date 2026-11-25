@@ -8,7 +8,19 @@
  * presets — the capture never has to defend itself against it.
  */
 
-import { ALIGN_CHOICES, EDGE_CHOICES, EDGE_PADDING, INSERT_MAX_CHARS, SCALE_CHOICES } from './const.js'
+import {
+  ALIGN_CHOICES,
+  EDGE_CHOICES,
+  EDGE_PADDING,
+  INSERT_MAX_CHARS,
+  MAX_RULES,
+  RULE_ATTR_CHARS,
+  RULE_NAME_CHARS,
+  RULE_SELECTOR_CHARS,
+  RULE_VALUE_CHARS,
+  SCALE_CHOICES,
+  STYLE_PROPS,
+} from './const.js'
 import { react } from './runtime.js'
 /** Storage key owned by this plugin. */
 export const STORAGE_KEY = 'chat-screenshot.options'
@@ -57,7 +69,78 @@ export const OPTION_DEFAULTS = Object.freeze({
   align: 'left',
   edge: EDGE_PADDING,
   scale: 'auto',
+  rules: [],
 })
+
+/**
+ * A stable id for a rule, derived from its selector.
+ *
+ * The selector is what a rule is about, so two rules on the same element are one rule: deriving the
+ * id keeps a hand-edited store, a repeated click and a reload all pointing at the same entry.
+ */
+export function ruleId(selector) {
+  let hash = 0
+  for (let index = 0; index < selector.length; index += 1) {
+    hash = (hash * 31 + selector.charCodeAt(index)) | 0
+  }
+  return `r${(hash >>> 0).toString(36)}`
+}
+
+/** One style map, keeping only the offered properties and only non-empty values. */
+function normalizeStyle(raw) {
+  const style = {}
+  if (raw === null || typeof raw !== 'object') return style
+  for (const prop of STYLE_PROPS) {
+    const value = raw[prop]
+    if (typeof value !== 'string') continue
+    const text = value.trim().slice(0, RULE_VALUE_CHARS)
+    if (text !== '') style[prop] = text
+  }
+  return style
+}
+
+/** One attribute map: names the DOM accepts, values as text, and `null` meaning "remove it". */
+function normalizeAttrs(raw) {
+  const attrs = {}
+  if (raw === null || typeof raw !== 'object') return attrs
+  for (const name of Object.keys(raw).slice(0, MAX_RULES)) {
+    if (!/^[a-z][a-z0-9-]*$/i.test(name)) continue
+    if (name === 'style' || name === 'class') continue
+    const value = raw[name]
+    if (value === null) attrs[name] = null
+    else if (typeof value === 'string') attrs[name] = value.slice(0, RULE_ATTR_CHARS)
+  }
+  return attrs
+}
+
+/** Clamp one stored rule onto the shape the capture understands, or drop it. */
+export function normalizeRule(raw) {
+  if (raw === null || typeof raw !== 'object') return null
+  const selector = typeof raw.selector === 'string' ? raw.selector.trim().slice(0, RULE_SELECTOR_CHARS) : ''
+  if (selector === '') return null
+  return {
+    id: ruleId(selector),
+    selector,
+    name: typeof raw.name === 'string' ? raw.name.trim().slice(0, RULE_NAME_CHARS) : '',
+    hide: raw.hide === true,
+    style: normalizeStyle(raw.style),
+    attrs: normalizeAttrs(raw.attrs),
+  }
+}
+
+/** Every stored rule, deduplicated by id and capped. */
+export function normalizeRules(raw) {
+  if (!Array.isArray(raw)) return []
+  // A selector owns one rule: a later duplicate replaces the earlier one in place, which keeps the
+  // order the user built while making a hand-edited or half-written array behave predictably.
+  const byId = new Map()
+  for (const entry of raw) {
+    const rule = normalizeRule(entry)
+    if (rule === null) continue
+    byId.set(rule.id, rule)
+  }
+  return Array.from(byId.values()).slice(0, MAX_RULES)
+}
 
 /** The nearest offered preset, so a stored value outside the list still lands on a real one. */
 function nearestEdge(value) {
@@ -84,6 +167,7 @@ export function normalizeOptions(raw) {
   if (ALIGN_CHOICES.includes(source.align)) next.align = source.align
   if (SCALE_CHOICES.includes(source.scale)) next.scale = source.scale
   next.edge = nearestEdge(source.edge)
+  next.rules = normalizeRules(source.rules)
   return next
 }
 
@@ -163,6 +247,41 @@ export function resetOptions() {
 export function subscribeOptions(listener) {
   listeners.add(listener)
   return () => listeners.delete(listener)
+}
+
+/** The rule that covers one selector, or null when the element carries none. */
+export function ruleFor(options, selector) {
+  return options.rules.find((rule) => rule.selector === selector) ?? null
+}
+
+/**
+ * Write one rule, creating it when the selector has none yet.
+ *
+ * The editor only ever knows an element and a change, so the merge lives here: a patch changes the
+ * named fields and leaves the rest of the rule alone, which is what makes "hide this" and "make it
+ * smaller" accumulate on the same element instead of replacing each other.
+ */
+export function saveRule(selector, patch) {
+  const current = readOptions()
+  const existing = ruleFor(current, selector)
+  const draft = {
+    selector,
+    name: existing === null ? '' : existing.name,
+    hide: existing === null ? false : existing.hide,
+    style: existing === null ? {} : existing.style,
+    attrs: existing === null ? {} : existing.attrs,
+    ...patch,
+  }
+  const saved = normalizeRule(draft)
+  if (saved === null) return null
+  writeOptions({ rules: [...current.rules.filter((rule) => rule.selector !== selector), saved] })
+  return saved
+}
+
+/** Drop the rule on one selector, leaving the element as the host draws it. */
+export function dropRule(selector) {
+  const current = readOptions()
+  writeOptions({ rules: current.rules.filter((rule) => rule.selector !== selector) })
 }
 
 /** The options in a component, re-rendered on every change. */

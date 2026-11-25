@@ -13,7 +13,8 @@ import { captureScale } from '../src/client/render/scale.js'
 import { xmlText, wrapMedia } from '../src/client/render/svg.js'
 import { planCrop } from '../src/client/dom/band.js'
 import { classifyPaging } from '../src/client/dom/paging.js'
-import { normalizeOptions } from '../src/client/shell/options.js'
+import { MAX_RULES } from '../src/client/shell/const.js'
+import { normalizeOptions, normalizeRule, normalizeRules, ruleId } from '../src/client/shell/options.js'
 import { fillTokens, insertMeta } from '../src/client/dom/inserts.js'
 
 const problems = []
@@ -171,6 +172,31 @@ check(
   `got ${fillTokens('{turns} | {date} {time}', meta)}`,
 )
 check('unknown tokens survive', fillTokens('{nope}', meta) === '{nope}', 'an unknown token was eaten')
+
+// --- rules ------------------------------------------------------------------------------------
+// A rule is user data read back from storage, so everything about it is a claim to verify: the id
+// has to be stable across reloads, a broken selector has to disappear rather than throw, and a
+// style or attribute the plugin does not understand has to be dropped instead of reaching the DOM.
+const ruleA = normalizeRule({ selector: '.alpha', name: 'Alpha', hide: true, style: { opacity: '0.3', nope: 'x' }, attrs: { 'data-x': '1', style: 'color:red' } })
+check('a rule keeps its selector', ruleA !== null && ruleA.selector === '.alpha', JSON.stringify(ruleA))
+check('a rule drops unknown style properties', ruleA !== null && ruleA.style.opacity === '0.3' && ruleA.style.nope === undefined, JSON.stringify(ruleA?.style))
+check('a rule refuses to set style and class', ruleA !== null && ruleA.attrs['data-x'] === '1' && ruleA.attrs.style === undefined && ruleA.attrs.class === undefined, JSON.stringify(ruleA?.attrs))
+check('an empty selector is not a rule', normalizeRule({ selector: '   ' }) === null, 'kept')
+check('a selector is trimmed and capped', normalizeRule({ selector: '  .b  ' })?.selector === '.b', 'not trimmed')
+
+const idA = ruleId('.alpha')
+check('an id is stable', idA === ruleId('.alpha') && idA !== ruleId('.beta'), `${idA}/${ruleId('.beta')}`)
+check('an id is printable', /^r[0-9a-z]+$/.test(idA), idA)
+
+const many = normalizeRules([
+  { selector: '.alpha', hide: true },
+  { selector: '.alpha', hide: false },
+  { selector: '.beta', style: { color: 'red' } },
+  { selector: '' },
+])
+check('rules dedupe by selector, last one wins', many.length === 2 && many[0].hide === false, JSON.stringify(many.map((rule) => [rule.selector, rule.hide])))
+check('rules are capped', normalizeRules(Array.from({ length: MAX_RULES + 6 }, (_, at) => ({ selector: `.n${at}` }))).length === MAX_RULES, 'cap ignored')
+check('options carry the rules', normalizeOptions({ rules: [{ selector: '.alpha' }] }).rules.length === 1, 'dropped')
 
 if (problems.length > 0) {
   for (const problem of problems) console.log(`logic: ${problem}`)

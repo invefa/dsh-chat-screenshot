@@ -13,6 +13,7 @@
   "output/download.js",
   "dom/geometry.js",
   "dom/clone.js",
+  "dom/rules.js",
   "dom/band.js",
   "dom/paging.js",
   "dom/inserts.js",
