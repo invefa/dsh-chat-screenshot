@@ -81,7 +81,10 @@ Documentation is English with a `.zh-CN.md` edition.
   they became settings nobody could find.
 - The editor's root is mounted on `document.body`. The overlay is `position: fixed`, and inside a
   subtree that carries a `transform` or a `filter` it would be positioned against that ancestor
-  instead of the viewport.
+  instead of the viewport. It is placed over the conversation's own rectangle rather than over the
+  window: a frameless window draws its title bar and its window buttons above the page, so a surface
+  that started at the top of the viewport would put its bar under the buttons and let the title bar
+  show through it.
 - The editor rebuilds the clone on a revision counter, not on the options object. Typed text goes
   straight into the stored options, and rebuilding on every keystroke would take the caret out of the
   field being written in. Clicks inside the copy are cancelled: the clone carries no React listeners,

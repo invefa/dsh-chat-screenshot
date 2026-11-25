@@ -3308,6 +3308,26 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Where the conversation sits on screen.
+     *
+     * The surface covers the conversation, not the window: a frameless window draws its own title bar and
+     * its own window buttons over the page, and a surface that started at the top of the viewport would
+     * put the bar under the buttons and let the title bar show through it.
+     */
+    function paneRect() {
+      const scroller = findConversation()
+      if (scroller === null) return null
+      const rect = scroller.getBoundingClientRect()
+      if (rect.width < 1 || rect.height < 1) return null
+      return {
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      }
+    }
+
+    /**
      * The overlay.
      *
      * `revision` is the only thing that rebuilds the clone: a switch changes the drawn picture, so the
@@ -3322,6 +3342,7 @@ window.__ModuleLoader__.load({
       const hostRef = useRef(null)
       const stageRef = useRef(null)
       const [revision, setRevision] = useState(0)
+      const [pane, setPane] = useState(paneRect)
       const [missing, setMissing] = useState(false)
       const [menu, setMenu] = useState(null)
 
@@ -3441,18 +3462,26 @@ window.__ModuleLoader__.load({
         return () => document.removeEventListener('keydown', onKey)
       }, [onClose])
 
-      // The copy is built from the conversation's width at that moment. A resize or a zoom leaves it
-      // wider than the surface, which cuts the right edge of the picture, so rebuild it at the new size.
+      // The copy is built from the conversation's width at that moment, and the surface sits where the
+      // conversation sat. A resize, a zoom or a sidebar that opens or closes moves both, so the surface is
+      // placed again and the copy is rebuilt at the new size.
       useEffect(() => {
         let timer = null
         const onResize = () => {
           window.clearTimeout(timer)
-          timer = window.setTimeout(() => setRevision((value) => value + 1), 220)
+          timer = window.setTimeout(() => {
+            setPane(paneRect())
+            setRevision((value) => value + 1)
+          }, 220)
         }
         window.addEventListener('resize', onResize)
+        const scroller = findConversation()
+        const observer = scroller === null || typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onResize)
+        if (observer !== null) observer.observe(scroller)
         return () => {
           window.clearTimeout(timer)
           window.removeEventListener('resize', onResize)
+          if (observer !== null) observer.disconnect()
         }
       }, [])
 
@@ -3501,7 +3530,13 @@ window.__ModuleLoader__.load({
 
       return h(
         'div',
-        { className: 'cs-ed-wrap' },
+        {
+          className: 'cs-ed-wrap',
+          style:
+            pane === null
+              ? undefined
+              : { left: `${pane.left}px`, top: `${pane.top}px`, width: `${pane.width}px`, height: `${pane.height}px` },
+        },
         h(
           'div',
           { className: 'cs-ed-bar' },
