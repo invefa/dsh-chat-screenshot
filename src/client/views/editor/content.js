@@ -18,7 +18,9 @@ function previewOf(t, block) {
   }
   if (block.kind === 'image') return t('settings.editor.block.image')
   if (block.kind === 'spacer') return `${block.height} px`
-  if (block.kind === 'divider') return t('settings.editor.block.divider')
+  // The kind is already printed in the first column, so a divider says how heavy it is and how much
+  // room it keeps instead of repeating its own name.
+  if (block.kind === 'divider') return `${block.thickness ?? 1} px / ${block.gap ?? 0} px`
   return t('settings.editor.block.meta')
 }
 

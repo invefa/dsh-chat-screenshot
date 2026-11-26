@@ -155,6 +155,8 @@ export const MESSAGES = {
     'settings.editor.component.copySuffix': '副本',
     'settings.editor.block.saveHint': '存成组件后可以从组件库反复取用。',
     'settings.editor.hiddenRestoreAll': '全部还原',
+  'settings.editor.block.thickness': '粗细',
+  'settings.editor.block.gap': '上下留白',
   },
   en: {
     'action.whole': 'Chat screenshot',
@@ -299,6 +301,8 @@ export const MESSAGES = {
     'settings.editor.component.copySuffix': 'copy',
     'settings.editor.block.saveHint': 'A saved component comes back from the shelf as often as you like.',
     'settings.editor.hiddenRestoreAll': 'Restore all',
+  'settings.editor.block.thickness': 'Thickness',
+  'settings.editor.block.gap': 'Space above and below',
   },
 }
 

@@ -724,6 +724,10 @@ export const STYLES = String.raw`
   gap: 6px;
   min-width: 0;
 }
+.cs-ed-anchor {
+  display: inline-flex;
+  min-width: 0;
+}
 .cs-ed-field-row {
   display: flex;
   flex-direction: column;

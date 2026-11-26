@@ -9,13 +9,19 @@
  * hooks that component calls.
  */
 import { h, useEffect, useRef } from '../../shell/runtime.js'
-import { BLOCK_KINDS, BLOCK_NAME_CHARS, BLOCK_TEXT_CHARS, IMAGE_WIDTH_MAX, IMAGE_WIDTH_MIN, SPACER_MAX, SPACER_MIN, TEXT_SIZES } from '../../shell/const.js'
+import { BLOCK_KINDS, BLOCK_NAME_CHARS, BLOCK_TEXT_CHARS, DIVIDER_GAP_MAX, DIVIDER_GAP_MIN, DIVIDER_THICKNESS_MAX, DIVIDER_THICKNESS_MIN, IMAGE_WIDTH_MAX, IMAGE_WIDTH_MIN, PRESET_COMPONENTS, SPACER_MAX, SPACER_MIN, TEXT_SIZES } from '../../shell/const.js'
 import { renderBlock } from '../../dom/clone/inserts.js'
 import { tokenValues } from '../../dom/clone/tokens.js'
 import { alignLabel, kindLabel, sizeLabel } from './labels.js'
 import { menuRow } from './rows.js'
 
 const ALIGNS = ['left', 'center']
+
+/** The shipped shape of one kind, which is where a kind switch starts from. */
+function shapeOf(kind) {
+  const preset = PRESET_COMPONENTS.find((entry) => entry.block.kind === kind)
+  return preset === undefined ? {} : { ...preset.block }
+}
 
 /** Read a file into a data URL, which is the only kind of image a picture can carry. */
 function readImage(file, done) {
@@ -153,7 +159,38 @@ export function componentEditor(props) {
     )
   }
 
-  if (block.kind === 'divider' || block.kind === 'meta') {
+  if (block.kind === 'divider') {
+    fields.push(
+      h(
+        'label',
+        { key: 'thickness', className: 'cs-ed-field-row' },
+        h('span', { className: 'cs-ed-label' }, t('settings.editor.block.thickness')),
+        h('input', {
+          className: 'cs-ed-input',
+          type: 'number',
+          min: DIVIDER_THICKNESS_MIN,
+          max: DIVIDER_THICKNESS_MAX,
+          value: block.thickness,
+          onChange: (event) => setBlock({ thickness: Number(event.target.value) }),
+        }),
+      ),
+      h(
+        'label',
+        { key: 'gap', className: 'cs-ed-field-row' },
+        h('span', { className: 'cs-ed-label' }, t('settings.editor.block.gap')),
+        h('input', {
+          className: 'cs-ed-input',
+          type: 'number',
+          min: DIVIDER_GAP_MIN,
+          max: DIVIDER_GAP_MAX,
+          value: block.gap,
+          onChange: (event) => setBlock({ gap: Number(event.target.value) }),
+        }),
+      ),
+    )
+  }
+
+  if (block.kind === 'meta') {
     fields.push(h('div', { key: 'note', className: 'cs-ed-hintline' }, kindLabel(t, block.kind)))
   }
 
@@ -186,7 +223,15 @@ export function componentEditor(props) {
       value: block.kind,
       values: BLOCK_KINDS,
       name: (kind) => kindLabel(t, kind),
-      onSelect: (kind) => setBlock({ kind }),
+      // Switching the kind starts that kind from its shipped shape, so a divider arrives with a
+      // thickness and a gap instead of empty fields, and a text block arrives with a size. An
+      // untouched suggested name follows the kind it now describes.
+      onSelect: (next) => {
+        const suggested = `${kindLabel(t, block.kind)} ${t('settings.editor.component.copySuffix')}`
+        const patch = { ...shapeOf(next), kind: next }
+        if (draft.name === suggested) patch.name = `${kindLabel(t, next)} ${t('settings.editor.component.copySuffix')}`
+        setBlock(patch)
+      },
     }),
     ...fields,
     h(

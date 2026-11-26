@@ -125,6 +125,12 @@ export const IMAGE_WIDTH_MIN = 10
 export const IMAGE_WIDTH_MAX = 100
 export const IMAGE_MAX_CHARS = 800_000
 
+/** A rule is a rule: how heavy the line is, and how much room it keeps on both sides. */
+export const DIVIDER_THICKNESS_MIN = 1
+export const DIVIDER_THICKNESS_MAX = 8
+export const DIVIDER_GAP_MIN = 0
+export const DIVIDER_GAP_MAX = 48
+
 /**
  * The components the plugin ships.
  *
@@ -138,7 +144,7 @@ export const PRESET_COMPONENTS = [
   { id: 'text', block: { kind: 'text', text: '', size: 'body', align: 'left' } },
   { id: 'spacer', block: { kind: 'spacer', height: 24 } },
   { id: 'image', block: { kind: 'image', src: '', width: 100 } },
-  { id: 'divider', block: { kind: 'divider' } },
+  { id: 'divider', block: { kind: 'divider', thickness: 1, gap: 0 } },
   { id: 'meta', block: { kind: 'meta' } },
 ]
 

@@ -61,3 +61,24 @@ export function useState(value) {
 export function useMemo(fn, deps) {
   return react.useMemo(fn, deps)
 }
+
+/**
+ * Let Escape close the innermost thing that is open.
+ *
+ * A menu this plugin opens sits on top of a host dialog that also answers Escape, and the host reads
+ * the key first. While a menu is open the key is taken here in the capture phase, so one Escape closes
+ * the menu and leaves the dialog standing; the next one is the dialog's again.
+ */
+export function useEscapeToClose(open, close) {
+  useEffect(() => {
+    if (!open) return undefined
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      close()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [open, close])
+}

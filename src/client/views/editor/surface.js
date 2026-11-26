@@ -47,7 +47,7 @@ import {
 } from '../../shell/options.js'
 import { autoName, elementKey } from '../../dom/clone/rules.js'
 import { buildStage } from '../../dom/stage.js'
-import { native, h, react, reactDom, useEffect, useRef, useState, useMemo } from '../../shell/runtime.js'
+import { native, h, react, reactDom, useEffect, useEscapeToClose, useRef, useState, useMemo } from '../../shell/runtime.js'
 import { describeSelected, entryLabel, kindLabel } from './labels.js'
 import { BLOCK_PAYLOAD, dropTarget, readDrag, writeDrag } from './drag.js'
 import { libraryView } from './library.js'
@@ -127,6 +127,8 @@ function CaptureSurface({ onClose }) {
   const [pick, setPick] = useState(false)
   const [menu, setMenu] = useState(null)
   const [rowMenu, setRowMenu] = useState(null)
+  useEscapeToClose(menu !== null, () => setMenu(null))
+  useEscapeToClose(rowMenu !== null, () => setRowMenu(null))
   const [tab, setTab] = useState('content')
   const [dockHeight, setDockHeight] = useState(DOCK_HEIGHT)
   const [dockFolded, setDockFolded] = useState(false)
@@ -373,6 +375,9 @@ function CaptureSurface({ onClose }) {
   useEffect(() => {
     const onKey = (event) => {
       if (event.key !== 'Escape') return
+      // Escape belongs to the innermost thing that is open: a host menu or dialog closes itself
+      // first, and anything a field was typed into gives up its focus. Only a bare Escape leaves.
+      if (document.querySelector('[role="menu"], [role="dialog"]') !== null) return
       const active = document.activeElement
       if (active instanceof HTMLElement && active.closest('.cs-ed-wrap') !== null) {
         if (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') {

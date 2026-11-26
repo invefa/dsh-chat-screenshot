@@ -181,6 +181,12 @@ const dataImage = normalizeBlock({ kind: 'image', src: 'data:image/png;base64,AA
 check('a data image is kept', dataImage !== null && dataImage.width === 50, JSON.stringify(dataImage))
 const capped = normalizeBlocks(Array.from({ length: 40 }, () => ({ kind: 'divider' })))
 check('blocks are capped', capped.length === MAX_BLOCKS, String(capped.length))
+const thin = normalizeBlock({ kind: 'divider' })
+check('a divider defaults to a hairline with no padding', thin !== null && thin.thickness === 1 && thin.gap === 0, JSON.stringify(thin))
+const fat = normalizeBlock({ kind: 'divider', thickness: 40, gap: -5 })
+check('a divider is clamped', fat !== null && fat.thickness === 8 && fat.gap === 0, JSON.stringify(fat))
+const spaced = normalizeBlock({ kind: 'divider', thickness: 2, gap: 16 })
+check('a divider keeps what it was given', spaced !== null && spaced.thickness === 2 && spaced.gap === 16, JSON.stringify(spaced))
 
 // Two zones, each contiguous: a block can move between them and the order inside a zone is preserved.
 writeOptions({

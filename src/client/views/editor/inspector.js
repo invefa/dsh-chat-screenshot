@@ -5,7 +5,7 @@
  * decides what a change means and these decide only how it looks.
  */
 import { h } from '../../shell/runtime.js'
-import { RULE_PRESETS, STYLE_PROPS, TEXT_SIZES } from '../../shell/const.js'
+import { DIVIDER_GAP_MAX, DIVIDER_GAP_MIN, DIVIDER_THICKNESS_MAX, DIVIDER_THICKNESS_MIN, RULE_PRESETS, STYLE_PROPS, TEXT_SIZES } from '../../shell/const.js'
 import { menuRow } from './rows.js'
 import { presetLabel, sizeLabel } from './labels.js'
 
@@ -282,6 +282,39 @@ export function blockInspector(props) {
           defaultValue: String(block.width),
           key: `width:${block.id}:${block.width}`,
           onBlur: (event) => props.onPatch({ width: Number(event.currentTarget.value) }),
+        }),
+      ),
+    )
+  }
+
+  if (block.kind === 'divider') {
+    rows.push(
+      h(
+        'label',
+        { className: 'cs-ed-field-row' },
+        h('span', { className: 'cs-ed-label' }, t('settings.editor.block.thickness')),
+        h('input', {
+          className: 'cs-ed-input',
+          type: 'number',
+          min: String(DIVIDER_THICKNESS_MIN),
+          max: String(DIVIDER_THICKNESS_MAX),
+          defaultValue: String(block.thickness ?? 1),
+          key: `thickness:${block.id}:${block.thickness}`,
+          onBlur: (event) => props.onPatch({ thickness: Number(event.currentTarget.value) }),
+        }),
+      ),
+      h(
+        'label',
+        { className: 'cs-ed-field-row' },
+        h('span', { className: 'cs-ed-label' }, t('settings.editor.block.gap')),
+        h('input', {
+          className: 'cs-ed-input',
+          type: 'number',
+          min: String(DIVIDER_GAP_MIN),
+          max: String(DIVIDER_GAP_MAX),
+          defaultValue: String(block.gap ?? 0),
+          key: `gap:${block.id}:${block.gap}`,
+          onBlur: (event) => props.onPatch({ gap: Number(event.currentTarget.value) }),
         }),
       ),
     )

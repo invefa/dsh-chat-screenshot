@@ -146,6 +146,12 @@ window.__ModuleLoader__.load({
     const IMAGE_WIDTH_MAX = 100
     const IMAGE_MAX_CHARS = 800_000
 
+    /** A rule is a rule: how heavy the line is, and how much room it keeps on both sides. */
+    const DIVIDER_THICKNESS_MIN = 1
+    const DIVIDER_THICKNESS_MAX = 8
+    const DIVIDER_GAP_MIN = 0
+    const DIVIDER_GAP_MAX = 48
+
     /**
      * The components the plugin ships.
      *
@@ -159,7 +165,7 @@ window.__ModuleLoader__.load({
       { id: 'text', block: { kind: 'text', text: '', size: 'body', align: 'left' } },
       { id: 'spacer', block: { kind: 'spacer', height: 24 } },
       { id: 'image', block: { kind: 'image', src: '', width: 100 } },
-      { id: 'divider', block: { kind: 'divider' } },
+      { id: 'divider', block: { kind: 'divider', thickness: 1, gap: 0 } },
       { id: 'meta', block: { kind: 'meta' } },
     ]
 
@@ -399,6 +405,27 @@ window.__ModuleLoader__.load({
       return react.useMemo(fn, deps)
     }
 
+    /**
+     * Let Escape close the innermost thing that is open.
+     *
+     * A menu this plugin opens sits on top of a host dialog that also answers Escape, and the host reads
+     * the key first. While a menu is open the key is taken here in the capture phase, so one Escape closes
+     * the menu and leaves the dialog standing; the next one is the dialog's again.
+     */
+    function useEscapeToClose(open, close) {
+      useEffect(() => {
+        if (!open) return undefined
+        const onKey = (event) => {
+          if (event.key !== 'Escape') return
+          event.preventDefault()
+          event.stopPropagation()
+          close()
+        }
+        window.addEventListener('keydown', onKey, true)
+        return () => window.removeEventListener('keydown', onKey, true)
+      }, [open, close])
+    }
+
     // ===== shell/options.js ==========================================
 
     /**
@@ -575,6 +602,12 @@ window.__ModuleLoader__.load({
         return {
           src: src.length <= IMAGE_MAX_CHARS ? src : '',
           width: clampNumber(raw.width, IMAGE_WIDTH_MIN, IMAGE_WIDTH_MAX, 100),
+        }
+      }
+      if (kind === 'divider') {
+        return {
+          thickness: clampNumber(raw.thickness, DIVIDER_THICKNESS_MIN, DIVIDER_THICKNESS_MAX, 1),
+          gap: clampNumber(raw.gap, DIVIDER_GAP_MIN, DIVIDER_GAP_MAX, 0),
         }
       }
       return {}
@@ -1066,6 +1099,8 @@ window.__ModuleLoader__.load({
         'settings.editor.component.copySuffix': '副本',
         'settings.editor.block.saveHint': '存成组件后可以从组件库反复取用。',
         'settings.editor.hiddenRestoreAll': '全部还原',
+      'settings.editor.block.thickness': '粗细',
+      'settings.editor.block.gap': '上下留白',
       },
       en: {
         'action.whole': 'Chat screenshot',
@@ -1210,6 +1245,8 @@ window.__ModuleLoader__.load({
         'settings.editor.component.copySuffix': 'copy',
         'settings.editor.block.saveHint': 'A saved component comes back from the shelf as often as you like.',
         'settings.editor.hiddenRestoreAll': 'Restore all',
+      'settings.editor.block.thickness': 'Thickness',
+      'settings.editor.block.gap': 'Space above and below',
       },
     }
 
@@ -1999,6 +2036,10 @@ window.__ModuleLoader__.load({
       flex-wrap: wrap;
       align-items: center;
       gap: 6px;
+      min-width: 0;
+    }
+    .cs-ed-anchor {
+      display: inline-flex;
       min-width: 0;
     }
     .cs-ed-field-row {
@@ -3907,7 +3948,12 @@ window.__ModuleLoader__.load({
       }
 
       if (block.kind === 'divider') {
-        shell.style.cssText += `border-top:1px solid ${RULE};height:0;`
+        const thickness = block.thickness ?? 1
+        const gap = block.gap ?? 0
+        shell.style.cssText += `padding:${gap}px 0;`
+        const rule = doc.createElement('div')
+        rule.style.cssText = `border-top:${thickness}px solid ${RULE};height:0;`
+        shell.appendChild(rule)
         if (edit !== null) shell.classList.add('cs-blk-space')
         return shell
       }
@@ -4760,6 +4806,7 @@ window.__ModuleLoader__.load({
 
     /** The host menu, or nothing when the host has no seed module to draw it with. */
     function CaptureMenu({ open, anchorRef, items, onSelect, onClose }) {
+      useEscapeToClose(open === true, onClose)
       if (native === undefined) return null
       return h(native.Menu, {
         open,
@@ -4970,10 +5017,16 @@ window.__ModuleLoader__.load({
     /**
      * One labelled menu of a few values, built from the host's own components: the row every choice in
      * the inspector is made of.
+     *
+     * The menu is a portal anchored to the button. Rendered in place it would be laid out inside the
+     * row -- a flex child of a scrolling column, clipped at the column's edge and ordered after the
+     * label -- instead of floating over the surface at the point it was opened from.
      */
 
     function menuRow(props) {
       const [open, setOpen] = useState(false)
+      const anchorRef = useRef(null)
+      useEscapeToClose(open, () => setOpen(false))
       const { Menu, Button, label, value, values } = props
       const nameOf = props.name === undefined ? (entry) => entry : props.name
       const current = values.includes(value) ? value : values[0]
@@ -4981,9 +5034,15 @@ window.__ModuleLoader__.load({
         'div',
         { className: 'cs-ed-row' },
         h('span', { className: 'cs-ed-label' }, label),
-        h(Button, { variant: 'outline', size: 'sm', onClick: () => setOpen(true) }, nameOf(current)),
+        h(
+          'span',
+          { className: 'cs-ed-anchor', ref: anchorRef },
+          h(Button, { variant: 'outline', size: 'sm', onClick: () => setOpen(true) }, nameOf(current)),
+        ),
         h(Menu, {
           open,
+          anchorRef,
+          portal: true,
           align: 'end',
           side: 'bottom',
           selectedId: current,
@@ -5284,6 +5343,39 @@ window.__ModuleLoader__.load({
         )
       }
 
+      if (block.kind === 'divider') {
+        rows.push(
+          h(
+            'label',
+            { className: 'cs-ed-field-row' },
+            h('span', { className: 'cs-ed-label' }, t('settings.editor.block.thickness')),
+            h('input', {
+              className: 'cs-ed-input',
+              type: 'number',
+              min: String(DIVIDER_THICKNESS_MIN),
+              max: String(DIVIDER_THICKNESS_MAX),
+              defaultValue: String(block.thickness ?? 1),
+              key: `thickness:${block.id}:${block.thickness}`,
+              onBlur: (event) => props.onPatch({ thickness: Number(event.currentTarget.value) }),
+            }),
+          ),
+          h(
+            'label',
+            { className: 'cs-ed-field-row' },
+            h('span', { className: 'cs-ed-label' }, t('settings.editor.block.gap')),
+            h('input', {
+              className: 'cs-ed-input',
+              type: 'number',
+              min: String(DIVIDER_GAP_MIN),
+              max: String(DIVIDER_GAP_MAX),
+              defaultValue: String(block.gap ?? 0),
+              key: `gap:${block.id}:${block.gap}`,
+              onBlur: (event) => props.onPatch({ gap: Number(event.currentTarget.value) }),
+            }),
+          ),
+        )
+      }
+
       rows.push(
         h(
           'div',
@@ -5317,7 +5409,9 @@ window.__ModuleLoader__.load({
       }
       if (block.kind === 'image') return t('settings.editor.block.image')
       if (block.kind === 'spacer') return `${block.height} px`
-      if (block.kind === 'divider') return t('settings.editor.block.divider')
+      // The kind is already printed in the first column, so a divider says how heavy it is and how much
+      // room it keeps instead of repeating its own name.
+      if (block.kind === 'divider') return `${block.thickness ?? 1} px / ${block.gap ?? 0} px`
       return t('settings.editor.block.meta')
     }
 
@@ -5412,6 +5506,12 @@ window.__ModuleLoader__.load({
      */
 
     const ALIGNS = ['left', 'center']
+
+    /** The shipped shape of one kind, which is where a kind switch starts from. */
+    function shapeOf(kind) {
+      const preset = PRESET_COMPONENTS.find((entry) => entry.block.kind === kind)
+      return preset === undefined ? {} : { ...preset.block }
+    }
 
     /** Read a file into a data URL, which is the only kind of image a picture can carry. */
     function readImage(file, done) {
@@ -5549,7 +5649,38 @@ window.__ModuleLoader__.load({
         )
       }
 
-      if (block.kind === 'divider' || block.kind === 'meta') {
+      if (block.kind === 'divider') {
+        fields.push(
+          h(
+            'label',
+            { key: 'thickness', className: 'cs-ed-field-row' },
+            h('span', { className: 'cs-ed-label' }, t('settings.editor.block.thickness')),
+            h('input', {
+              className: 'cs-ed-input',
+              type: 'number',
+              min: DIVIDER_THICKNESS_MIN,
+              max: DIVIDER_THICKNESS_MAX,
+              value: block.thickness,
+              onChange: (event) => setBlock({ thickness: Number(event.target.value) }),
+            }),
+          ),
+          h(
+            'label',
+            { key: 'gap', className: 'cs-ed-field-row' },
+            h('span', { className: 'cs-ed-label' }, t('settings.editor.block.gap')),
+            h('input', {
+              className: 'cs-ed-input',
+              type: 'number',
+              min: DIVIDER_GAP_MIN,
+              max: DIVIDER_GAP_MAX,
+              value: block.gap,
+              onChange: (event) => setBlock({ gap: Number(event.target.value) }),
+            }),
+          ),
+        )
+      }
+
+      if (block.kind === 'meta') {
         fields.push(h('div', { key: 'note', className: 'cs-ed-hintline' }, kindLabel(t, block.kind)))
       }
 
@@ -5582,7 +5713,15 @@ window.__ModuleLoader__.load({
           value: block.kind,
           values: BLOCK_KINDS,
           name: (kind) => kindLabel(t, kind),
-          onSelect: (kind) => setBlock({ kind }),
+          // Switching the kind starts that kind from its shipped shape, so a divider arrives with a
+          // thickness and a gap instead of empty fields, and a text block arrives with a size. An
+          // untouched suggested name follows the kind it now describes.
+          onSelect: (next) => {
+            const suggested = `${kindLabel(t, block.kind)} ${t('settings.editor.component.copySuffix')}`
+            const patch = { ...shapeOf(next), kind: next }
+            if (draft.name === suggested) patch.name = `${kindLabel(t, next)} ${t('settings.editor.component.copySuffix')}`
+            setBlock(patch)
+          },
         }),
         ...fields,
         h(
@@ -5929,6 +6068,8 @@ window.__ModuleLoader__.load({
       const [pick, setPick] = useState(false)
       const [menu, setMenu] = useState(null)
       const [rowMenu, setRowMenu] = useState(null)
+      useEscapeToClose(menu !== null, () => setMenu(null))
+      useEscapeToClose(rowMenu !== null, () => setRowMenu(null))
       const [tab, setTab] = useState('content')
       const [dockHeight, setDockHeight] = useState(DOCK_HEIGHT)
       const [dockFolded, setDockFolded] = useState(false)
@@ -6175,6 +6316,9 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         const onKey = (event) => {
           if (event.key !== 'Escape') return
+          // Escape belongs to the innermost thing that is open: a host menu or dialog closes itself
+          // first, and anything a field was typed into gives up its focus. Only a bare Escape leaves.
+          if (document.querySelector('[role="menu"], [role="dialog"]') !== null) return
           const active = document.activeElement
           if (active instanceof HTMLElement && active.closest('.cs-ed-wrap') !== null) {
             if (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') {
@@ -7081,6 +7225,9 @@ window.__ModuleLoader__.load({
     function MenuRow({ title, description, value, entries, onSelect }) {
       const [open, setOpen] = useState(false)
       const anchorRef = react.useRef(null)
+      // The settings dialog answers Escape itself, so while a menu is open the key is taken here first:
+      // one Escape closes the menu, the next one is the dialog's again.
+      useEscapeToClose(open, () => setOpen(false))
       const selected = entries.find((entry) => entry.id === value)
       const label = selected === undefined ? value : selected.label
       if (native === undefined) {
@@ -7129,6 +7276,7 @@ window.__ModuleLoader__.load({
           h(Menu, {
             open,
             anchorRef,
+            portal: true,
             items: entries,
             selectedId: value,
             align: 'end',

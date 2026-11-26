@@ -9,7 +9,7 @@
 
 import { EDGE_CHOICES, SCALE_CHOICES, SCROLL_ATTRIBUTE } from '../shell/const.js'
 import { resetOptions, useOptions, writeOptions } from '../shell/options.js'
-import { native, h, react, useMemo, useState } from '../shell/runtime.js'
+import { native, h, react, useEscapeToClose, useMemo, useState } from '../shell/runtime.js'
 import { useTranslate } from '../shell/i18n.js'
 import { openEditor } from './editor/surface.js'
 
@@ -24,6 +24,9 @@ function conversationReady() {
 function MenuRow({ title, description, value, entries, onSelect }) {
   const [open, setOpen] = useState(false)
   const anchorRef = react.useRef(null)
+  // The settings dialog answers Escape itself, so while a menu is open the key is taken here first:
+  // one Escape closes the menu, the next one is the dialog's again.
+  useEscapeToClose(open, () => setOpen(false))
   const selected = entries.find((entry) => entry.id === value)
   const label = selected === undefined ? value : selected.label
   if (native === undefined) {
@@ -72,6 +75,7 @@ function MenuRow({ title, description, value, entries, onSelect }) {
       h(Menu, {
         open,
         anchorRef,
+        portal: true,
         items: entries,
         selectedId: value,
         align: 'end',
@@ -178,3 +182,4 @@ export function SettingsSection(props) {
     ),
   )
 }
+

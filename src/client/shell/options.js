@@ -14,6 +14,10 @@ import {
   BLOCK_NAME_CHARS,
   BLOCK_TEXT_CHARS,
   BLOCK_ZONES,
+  DIVIDER_GAP_MAX,
+  DIVIDER_GAP_MIN,
+  DIVIDER_THICKNESS_MAX,
+  DIVIDER_THICKNESS_MIN,
   EDGE_CHOICES,
   EDGE_PADDING,
   IMAGE_MAX_CHARS,
@@ -197,6 +201,12 @@ function normalizeContent(kind, raw, align) {
     return {
       src: src.length <= IMAGE_MAX_CHARS ? src : '',
       width: clampNumber(raw.width, IMAGE_WIDTH_MIN, IMAGE_WIDTH_MAX, 100),
+    }
+  }
+  if (kind === 'divider') {
+    return {
+      thickness: clampNumber(raw.thickness, DIVIDER_THICKNESS_MIN, DIVIDER_THICKNESS_MAX, 1),
+      gap: clampNumber(raw.gap, DIVIDER_GAP_MIN, DIVIDER_GAP_MAX, 0),
     }
   }
   return {}

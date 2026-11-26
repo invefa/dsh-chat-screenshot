@@ -7,10 +7,11 @@
  * nothing: the plain click on the entry still captures the whole conversation.
  */
 
-import { h, native } from '../shell/runtime.js'
+import { h, native, useEscapeToClose } from '../shell/runtime.js'
 
 /** The host menu, or nothing when the host has no seed module to draw it with. */
 export function CaptureMenu({ open, anchorRef, items, onSelect, onClose }) {
+  useEscapeToClose(open === true, onClose)
   if (native === undefined) return null
   return h(native.Menu, {
     open,

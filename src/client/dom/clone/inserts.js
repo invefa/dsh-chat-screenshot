@@ -63,7 +63,7 @@ function editable(doc, node, id, placeholder) {
 }
 
 /** One block, drawn the way both renderers will see it. Null when a capture has nothing to draw. */
-function renderBlock(doc, block, values, labels) {
+export function renderBlock(doc, block, values, labels) {
   const edit = labels === null ? null : labels
   const shell = doc.createElement('div')
   shell.setAttribute(BLOCK_ATTRIBUTE, block.id)
@@ -80,7 +80,12 @@ function renderBlock(doc, block, values, labels) {
   }
 
   if (block.kind === 'divider') {
-    shell.style.cssText += `border-top:1px solid ${RULE};height:0;`
+    const thickness = block.thickness ?? 1
+    const gap = block.gap ?? 0
+    shell.style.cssText += `padding:${gap}px 0;`
+    const rule = doc.createElement('div')
+    rule.style.cssText = `border-top:${thickness}px solid ${RULE};height:0;`
+    shell.appendChild(rule)
     if (edit !== null) shell.classList.add('cs-blk-space')
     return shell
   }

@@ -109,6 +109,16 @@ Documentation is English with a `.zh-CN.md` edition.
   hidden list and the library, and the preview keeps the full width of the conversation. Nothing
   interactive sits at the very top of the window: a frameless window paints its title bar over the
   page, and a control there is only clickable along its lower edge.
+- A menu is anchored and portalled, never laid out in place. `views/editor/rows.js` passes the button's
+  `anchorRef` and `portal: true`; without them the host menu becomes a flex child of the scrolling
+  column it was opened from, so it is clipped at the column edge, queued after its own label and drawn
+  as part of the panel. The same rule applies to the settings pickers and the capture menu.
+- Escape belongs to the innermost layer. While a menu is open it swallows the key in the capture phase
+  (`useEscapeToClose` in `shell/runtime.js`), so one Escape closes the menu and the dialog or the
+  surface behind it stays; only a bare Escape closes the editor.
+- A block owns its own numbers. A divider carries `thickness` and `gap`, a spacer its `height`, an image
+  its `width`, text its `size` and `align`; `normalizeContent` clamps each one, the designer and the
+  inspector edit the same fields, and the renderer reads nothing else.
 - The surface sits below the host's dialog layer (900 against 1000), so a dialog opened while it is up
   stays visible; a dialog that opens the surface closes itself first. The overlay used to sit at 1050
   to cover the settings dialog it was opened from, which hid every later dialog behind it.
