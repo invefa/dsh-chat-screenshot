@@ -41,16 +41,16 @@ Settings > ChatScreenshot opens the editor over the conversation. Every tool liv
 
 - **Any element is a candidate.** Double-click anything in the copy to hide it, double-click again to bring it back. The controls this plugin knows by name are only a starting vocabulary; whatever a plugin or a future version adds to the transcript is reachable the same way.
 - **Hiding is a declaration.** A hidden element keeps its place in the copy and takes no room in the picture, so the picture measures as if it were never there, and the editor can still point at the gap.
-- **The hidden bar keeps the list.** Everything hidden is pinned along the bottom of the dock: click an entry to flash it back into place, double-click to restore it for good.
-- **Content goes above or below.** The library offers text, spacer, image, divider and the metadata line. Click one to append it to the chosen zone, or drag it onto the picture — a line shows where it will land. Blocks already in the picture can be dragged, and dragged across zones.
+- **The elements tab keeps the list.** Everything hidden is collected in the left column of that tab: click an entry to flash it back into place, double-click to restore it for good, or restore them all at once.
+- **Content goes above or below.** The library is one shelf: a block is a block, whether the plugin ships it or you saved it. Place in chooses the zone, and the block you add is selected where it landed, so the picture shows the change immediately.
 - **Text reads live values.** `{turns}` `{prompts}` `{date}` `{time}` `{weekday}` `{title}` `{model}` `{session}` `{app}` and `{version}` are filled at capture time from the conversation and the host. Placeholders stay readable while editing, and anything unknown is left untouched.
 - **Images stay in the browser.** A picked file is read into the options as a data URL; anything past 800k characters is refused rather than silently stored.
-- **Components.** A component is one block with a name. The library's designer opens a blank one, or any saved entry; type the name, pick the kind, set its fields and watch the live preview, which is drawn by the picture's own renderer. Saved components join the library and can be dragged onto the picture like any preset.
-- **The inspector edits the selection.** Click an element for its tag, selector, a hide switch, an editable name, six style presets (dim, outline, trim spacing, drop background, monospace, small type) and free-form style and attribute rows. Click a block for its text, size, alignment, spacing, image and width.
+- **Components.** A component is one block with a name. The five shipped blocks are components the plugin supplies: they can be placed like any other entry, and because they belong to the plugin they cannot be changed or deleted in place. Their `...` opens the designer with a copy, and saving that copy makes it yours. Every field the designer shows is labelled, the live preview is drawn by the picture's own renderer, and saving keeps the entry on the shelf for good.
+- **The inspector edits the selection.** Click an element for its tag, selector, a hide switch, an editable name, six style presets (dim, outline, trim spacing, drop background, monospace, small type) and free-form style and attribute rows. Click a block for its fields, a button that saves it to the shelf as a component, and a button that removes it.
 - **Right-click anything** for hide, restore, "remove the rule for this element", the divider, the metadata line and "Restore defaults".
 - **Done** closes the editor. Every change applies to the next capture; nothing needs a reload.
 
-The dock holds three tabs: the content (the blocks of both zones), the elements (what is hidden and what the pointer selects) and the library (presets, components and the variable chips).
+The dock holds three tabs: content (the blocks of both zones), elements (what is hidden and what the pointer selects) and the library (the shelf and its designer).
 
 ## Storage
 

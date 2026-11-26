@@ -59,6 +59,12 @@ export function alignLabel(t, align) {
   return t('settings.editor.align.left')
 }
 
+/** The two zones, named. */
+export function zoneLabel(t, zone) {
+  if (zone === 'top') return t('settings.editor.zone.top')
+  return t('settings.editor.zone.bottom')
+}
+
 /** The size names a text block offers. */
 export function sizeLabel(t, size) {
   if (size === 'title') return t('settings.editor.block.sizeTitle')
@@ -66,10 +72,6 @@ export function sizeLabel(t, size) {
   return t('settings.editor.block.sizeBody')
 }
 
-/** The conversation the surface is placed over, or null. */
-/**
- * Tag, attributes and text of one element of the copy, for the inspector's summary line.
- */
 /**
  * The element under the pointer, as a line the inspector can print: the opening tag with its own
  * markers, the start of its text, and how many children it has. Punctuation and numbers only, so the
@@ -83,6 +85,6 @@ export function describeSelected(clone, selector) {
     .map(([name, value]) => (value === '' ? name : `${name}="${value}"`))
     .join(' ')
   const head = attrs === '' ? `<${info.tag}>` : `<${info.tag} ${attrs}>`
-  return `${head} · ${info.text === '' ? '—' : info.text} · ${info.children}`
+  return `${head} | ${info.text === '' ? '-' : info.text} | ${info.children}`
 }
 

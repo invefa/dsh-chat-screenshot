@@ -104,9 +104,25 @@ Documentation is English with a `.zh-CN.md` edition.
   system hands every package; a hand-rolled menu would lose the theme, the focus trap and the keyboard
   handling the surrounding UI already has. `native` may be undefined in a build that ships no seed, so
   every use falls back to render nothing rather than to throw.
-- The tools live in a tray along the bottom of the editor, not in a side column. A side column takes
-  width away from the copy, and the copy is the thing being judged; the tray carries the hidden list,
-  the inspector and the library, and the preview keeps the full width of the conversation.
+- The tools live in a dock along the bottom of the editor, not in a side column. A side column takes
+  width away from the copy, and the copy is the thing being judged; the dock carries the content, the
+  hidden list and the library, and the preview keeps the full width of the conversation. Nothing
+  interactive sits at the very top of the window: a frameless window paints its title bar over the
+  page, and a control there is only clickable along its lower edge.
+- The surface sits below the host's dialog layer (900 against 1000), so a dialog opened while it is up
+  stays visible; a dialog that opens the surface closes itself first. The overlay used to sit at 1050
+  to cover the settings dialog it was opened from, which hid every later dialog behind it.
+- The library is one shelf. A block is a block whether the plugin ships it or the user saved it: the
+  shipped ones are `PRESET_COMPONENTS` in `const.js`, they are rendered, placed and stored by the same
+  code as a saved component, and the only difference is ownership — a shipped entry cannot be deleted
+  or changed in place. Its `...` opens the designer with a copy, and saving that copy is how a shipped
+  entry becomes the user's. Nothing may be reachable only through a preset: whatever a preset can be,
+  the designer can express.
+- Adding a block selects it where it landed and leaves the shelf in place. Jumping to the content tab
+  after every add hid the shelf the reader was working from and broke the run of several adds.
+- Every field in the designer carries its own label, because the panel edits one block and a bare
+  number box leaves the reader guessing what it measures. A file input reads as an empty box and cannot
+  be styled, so a host button is the control and the input stays out of sight behind it.
 - The added content is a list of blocks, not a fixed header and footer. A block is
   `{ id, kind, zone, ... }` with `kind` in text / spacer / image / divider / meta and `zone` in top /
   bottom, so the two fixed fields that used to be here are two ordinary blocks; the library appends or

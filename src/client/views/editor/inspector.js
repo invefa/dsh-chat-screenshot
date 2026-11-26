@@ -7,7 +7,7 @@
 import { h } from '../../shell/runtime.js'
 import { RULE_PRESETS, STYLE_PROPS, TEXT_SIZES } from '../../shell/const.js'
 import { menuRow } from './rows.js'
-import { describeSelected, presetLabel, sizeLabel } from './labels.js'
+import { presetLabel, sizeLabel } from './labels.js'
 
 export function elementInspector(props) {
   const { t, selection, rule, detail, styleKeys, attrKeys, Switch, Button } = props
@@ -289,26 +289,12 @@ export function blockInspector(props) {
 
   rows.push(
     h(
-      'label',
-      { className: 'cs-ed-field-row' },
-      h('span', { className: 'cs-ed-label' }, t('settings.editor.block.saveName')),
-      h(
-        'div',
-        { className: 'cs-ed-row' },
-        h('input', {
-          className: 'cs-ed-input',
-          placeholder: block.kind,
-          value: props.customName,
-          onChange: (event) => props.onCustomName(event.currentTarget.value),
-        }),
-        h(Button, { variant: 'outline', size: 'sm', onClick: () => props.onSaveCustom() }, t('settings.editor.block.save')),
-      ),
-    ),
-    h(
       'div',
       { className: 'cs-ed-row' },
+      h(Button, { variant: 'outline', size: 'sm', onClick: () => props.onSaveAsComponent() }, t('settings.editor.block.save')),
       h(Button, { variant: 'ghost', size: 'sm', onClick: () => props.onRemove() }, t('settings.editor.block.delete')),
     ),
+    h('div', { className: 'cs-ed-hintline' }, t('settings.editor.block.saveHint')),
   )
 
   return h('div', { className: 'cs-ed-side' }, ...rows)

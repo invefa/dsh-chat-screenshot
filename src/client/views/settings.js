@@ -86,10 +86,17 @@ function MenuRow({ title, description, value, entries, onSelect }) {
   )
 }
 
-export function SettingsSection() {
+export function SettingsSection(props) {
   const t = useTranslate()
   const options = useOptions()
   const ready = useMemo(() => conversationReady(), [])
+
+  // The surface covers the conversation, so it cannot stand over this dialog: the dialog steps aside
+  // first, and the surface then owns the screen at its own layer.
+  const open = () => {
+    if (typeof props.close === 'function') props.close()
+    openEditor()
+  }
 
   const edgeEntries = EDGE_CHOICES.map((choice) => ({
     id: String(choice),
@@ -113,7 +120,7 @@ export function SettingsSection() {
         ? null
         : h(
             native.Button,
-            { variant: 'primary', size: 'sm', disabled: !ready, onClick: () => openEditor() },
+            { variant: 'primary', size: 'sm', disabled: !ready, onClick: () => open() },
             t('settings.editor.open'),
           ),
       ready ? null : h('div', { className: 'cs-set-desc' }, t('settings.editor.noConversation')),

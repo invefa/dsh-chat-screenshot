@@ -490,15 +490,18 @@ export function moveBlock(id, zone, index) {
   return moved
 }
 
-/** Save the shape of one block as a component the palette can drop again. */
-export function saveCustom(name, block) {
-  const label = typeof name === 'string' ? name.trim().slice(0, BLOCK_NAME_CHARS) : ''
-  if (label === '' || block === null || typeof block !== 'object') return null
-  const current = readOptions()
-  const custom = normalizeCustom({ name: label, block })
-  if (custom === null) return null
-  writeOptions({ custom: [custom, ...current.custom] })
-  return custom
+/**
+ * Whether a component can stand in the picture as it is.
+ *
+ * Every kind can, except an image without bytes: a picture cannot be painted from nothing, so placing
+ * one would add an invisible block. The shelf sends that case to the designer instead of dropping a
+ * block that draws no pixels.
+ */
+export function canPlace(block) {
+  if (block === null || block === undefined || typeof block !== 'object') return false
+  if (!BLOCK_KINDS.includes(block.kind)) return false
+  if (block.kind === 'image') return typeof block.src === 'string' && block.src.startsWith('data:image/')
+  return true
 }
 
 /** Forget one saved component. */

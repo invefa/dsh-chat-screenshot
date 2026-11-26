@@ -126,6 +126,23 @@ export const IMAGE_WIDTH_MAX = 100
 export const IMAGE_MAX_CHARS = 800_000
 
 /**
+ * The components the plugin ships.
+ *
+ * A preset is a component like any the reader saves: a name (its block kind) and a block shape. It is
+ * listed on the shelf, dragged, dropped and opened in the designer by the same code, and the capture
+ * renderer cannot tell it apart from a saved one. The only difference is ownership — a preset cannot
+ * be deleted or changed in place, so opening it in the designer starts a copy that belongs to the
+ * reader. Anything a preset can express, a saved component can express too.
+ */
+export const PRESET_COMPONENTS = [
+  { id: 'text', block: { kind: 'text', text: '', size: 'body', align: 'left' } },
+  { id: 'spacer', block: { kind: 'spacer', height: 24 } },
+  { id: 'image', block: { kind: 'image', src: '', width: 100 } },
+  { id: 'divider', block: { kind: 'divider' } },
+  { id: 'meta', block: { kind: 'meta' } },
+]
+
+/**
  * Tokens a text block can carry.
  *
  * The values come from the conversation the capture is taken from — how many turns it holds, what it

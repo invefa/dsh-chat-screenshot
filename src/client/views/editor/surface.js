@@ -23,14 +23,10 @@ import {
   DOCK_HEIGHT,
   DOCK_RATIO,
   FIELD_ATTRIBUTE,
-  MAX_CUSTOM,
   PEEK_MS,
-  RULE_PRESETS,
+  PRESET_COMPONENTS,
   SCROLL_ATTRIBUTE,
   STYLE_PROPS,
-  TEMPLATE_TOKENS,
-  TEXT_SIZES,
-  ZONE_ATTRIBUTE,
 } from '../../shell/const.js'
 import { useTranslate } from '../../shell/i18n.js'
 import {
@@ -43,17 +39,16 @@ import {
   removeBlock,
   resetOptions,
   ruleFor,
-  saveCustom,
   saveRule,
   storeCustom,
   updateBlock,
   useOptions,
   writeOptions,
 } from '../../shell/options.js'
-import { autoName, describeElement, elementKey } from '../../dom/clone/rules.js'
+import { autoName, elementKey } from '../../dom/clone/rules.js'
 import { buildStage } from '../../dom/stage.js'
 import { native, h, react, reactDom, useEffect, useRef, useState, useMemo } from '../../shell/runtime.js'
-import { describeSelected, entryLabel, kindLabel, pieceLabel } from './labels.js'
+import { describeSelected, entryLabel, kindLabel } from './labels.js'
 import { BLOCK_PAYLOAD, dropTarget, readDrag, writeDrag } from './drag.js'
 import { libraryView } from './library.js'
 import { blockInspector, elementInspector } from './inspector.js'
@@ -61,11 +56,17 @@ import { contentView } from './content.js'
 import { componentEditor } from './components.js'
 import { dockView } from './dock.js'
 
-/** The names the built-in pieces answer to, so a hidden one still reads as something. */
+/** The conversation the surface covers, or null when there is none on screen. */
 function findConversation() {
   const scroller = document.querySelector(`[${SCROLL_ATTRIBUTE}]`)
   if (!(scroller instanceof HTMLElement) || scroller.clientWidth < 1) return null
   return scroller
+}
+
+/** A block's content without the place it holds in the picture, which is what a component stores. */
+function blockShape(block) {
+  const { id, zone, ...shape } = block
+  return shape
 }
 
 /** The rectangle the conversation occupies, so the surface sits exactly over it. */
@@ -136,7 +137,6 @@ function CaptureSurface({ onClose }) {
   const [draftValue, setDraftValue] = useState('')
   const [draftAttr, setDraftAttr] = useState('')
   const [draftAttrValue, setDraftAttrValue] = useState('')
-  const [customName, setCustomName] = useState('')
   const [draftComponent, setDraftComponent] = useState(null)
 
   pickRef.current = pick
@@ -206,7 +206,6 @@ function CaptureSurface({ onClose }) {
 
     const chooseBlock = (id) => {
       setSelection({ type: 'block', id })
-      setCustomName('')
       setTab('content')
       return id
     }
@@ -343,15 +342,18 @@ function CaptureSurface({ onClose }) {
     }
   }, [revision])
 
-  // The picked element is outlined where it sits, so the inspector always says which element it is
-  // talking about. A hidden element has no box, so it cannot be outlined — its chip locates it instead.
+  // What is selected is outlined where it sits: an element by its selector, a block by its id, so the
+  // tray always says which thing it is talking about. A hidden element has no box, so it cannot be
+  // outlined — its chip locates it instead.
   useEffect(() => {
     const stage = stageRef.current
-    if (stage === null) return undefined
-    if (selection === null || selection.type === 'block') return undefined
+    if (stage === null || selection === null) return undefined
     let marked = null
     try {
-      marked = stage.clone.querySelector(selection.selector)
+      marked =
+        selection.type === 'block'
+          ? stage.clone.querySelector(`[${BLOCK_ATTRIBUTE}="${selection.id}"]`)
+          : stage.clone.querySelector(selection.selector)
     } catch {
       marked = null
     }
@@ -434,7 +436,7 @@ function CaptureSurface({ onClose }) {
   }
 
   /** Put one hidden entry back into the picture, and forget a rule that only existed to hide. */
-  const restore = (entry) => {
+  const restore = (entry, quiet = false) => {
     if (entry.kind === 'piece') {
       writeOptions({ [entry.option]: false })
     } else {
@@ -446,7 +448,7 @@ function CaptureSurface({ onClose }) {
       if (silent) dropRule(entry.selector)
       else saveRule(entry.selector, { hide: false })
     }
-    bump()
+    if (!quiet) bump()
   }
 
   const patchRule = (patch) => {
@@ -493,14 +495,46 @@ function CaptureSurface({ onClose }) {
     bump()
   }
 
-  /** Append one block of a kind to the zone the reader picked, for a click instead of a drag. */
-  const appendBlock = (kind, shape) => {
-    const created = addBlock(addZone, { ...(shape ?? {}), kind, zone: addZone })
-    if (created !== null) {
-      setSelection({ type: 'block', id: created.id })
-      setTab('content')
-      bump()
-    }
+  /**
+   * Place a component at the end of the zone the shelf points at, for a click instead of a drag.
+   *
+   * The shelf stays open: adding content is a run of small decisions and the picture is already showing
+   * the result, so leaving the shelf after every click would hide the one place the next click comes
+   * from. The new block is selected, which outlines it in the picture and focuses the content tab's
+   * inspector the moment the reader goes there.
+   */
+  const placeComponent = (entry) => {
+    const created = addBlock(addZone, { ...entry.block, zone: addZone })
+    if (created === null) return
+    setSelection({ type: 'block', id: created.id })
+    bump()
+  }
+
+  /** Open one component of the shelf in the designer; a shipped one opens as a copy. */
+  const editComponent = (entry) => {
+    const builtin = entry.builtin === true
+    const label = kindLabel(t, entry.block.kind)
+    setDraftComponent({
+      id: builtin ? null : entry.id,
+      name: builtin ? `${label} ${t('settings.editor.component.copySuffix')}` : entry.name,
+      block: { ...entry.block },
+      builtin,
+    })
+    setTab('library')
+    setPick(false)
+  }
+
+  /** Save the selected block as a component: the same designer, with that block as the draft. */
+  const saveAsComponent = () => {
+    if (blockSelection === null) return
+    setDraftComponent({
+      id: null,
+      name: `${kindLabel(t, blockSelection.kind)} ${t('settings.editor.component.copySuffix')}`,
+      block: blockShape(blockSelection),
+      builtin: false,
+    })
+    setTab('library')
+    setPick(false)
   }
 
   /** Add one token to the text of the selected block. */
@@ -585,6 +619,12 @@ function CaptureSurface({ onClose }) {
     }
   }
 
+  /** Put every hidden entry back in one go, with one rebuild instead of one per entry. */
+  const restoreAll = () => {
+    for (const entry of hiddenEntries) restore(entry, true)
+    bump()
+  }
+
   const styleKeys = rule === null ? [] : Object.keys(rule.style)
   const attrKeys = rule === null ? [] : Object.keys(rule.attrs)
   const detail =
@@ -601,20 +641,12 @@ function CaptureSurface({ onClose }) {
           Menu,
           fileRef,
           onPickImage: pickImage,
-          customName,
-          setCustomName,
-          onCustomName: (value) => setCustomName(value),
-          onSaveCustom: () => {
-            const name = customName.trim() === '' ? kindLabel(t, blockSelection.kind) : customName
-            saveCustom(String(name), blockSelection)
-            setCustomName('')
-          },
+          onSaveAsComponent: saveAsComponent,
           onRemove: () => {
             removeBlock(blockSelection.id)
             setSelection(null)
             bump()
           },
-          onToken: addToken,
           onPatch: (patch) => {
             updateBlock(blockSelection.id, patch)
             bump()
@@ -659,24 +691,25 @@ function CaptureSurface({ onClose }) {
 
   const library = h(libraryView, {
     t,
+    Button,
+    Menu,
     options,
-    blockSelection,
-    onAdd: (kind, shape) => appendBlock(kind, shape),
-    onDropCustom: (id) => {
+    selection: blockSelection,
+    editingId: draftComponent === null ? null : draftComponent.id,
+    zone: addZone,
+    onPlace: placeComponent,
+    onEdit: editComponent,
+    onDelete: (id) => {
       dropCustom(id)
+      setDraftComponent((current) => (current !== null && current.id === id ? null : current))
       bump()
     },
+    onZone: (next) => setAddZone(next),
     onToken: addToken,
-    onNewComponent: () => {
-      setDraftComponent({ id: null, name: '', block: { kind: 'text', text: '', size: 'body', align: 'left' } })
+    onNew: () => {
+      setDraftComponent({ id: null, name: '', block: { kind: 'text', text: '', size: 'body', align: 'left' }, builtin: false })
       setTab('library')
       setPick(false)
-    },
-    onEditComponent: (id) => {
-      const entry = options.custom.find((item) => item.id === id)
-      if (entry === undefined) return
-      setDraftComponent({ id: entry.id, name: entry.name, block: { ...entry.block } })
-      setTab('library')
     },
     onDrag: (payload) => {
       writeDrag(payload)
@@ -707,13 +740,20 @@ function CaptureSurface({ onClose }) {
   const tabs = [
     { id: 'content', label: t('settings.editor.tab.content'), count: options.blocks.length },
     { id: 'element', label: t('settings.editor.tab.element'), count: hiddenEntries.length },
-    { id: 'library', label: t('settings.editor.tab.library'), count: 0 },
+    { id: 'library', label: t('settings.editor.tab.library'), count: PRESET_COMPONENTS.length + options.custom.length },
   ]
 
   const hiddenSection = h(
     'div',
     { className: 'cs-ed-hidden' },
-    h('div', { className: 'cs-ed-panel-head' }, t('settings.editor.hidden')),
+    h(
+      'div',
+      { className: 'cs-ed-panel-head' },
+      h('span', { className: 'cs-ed-label' }, t('settings.editor.hidden')),
+      hiddenEntries.length === 0
+        ? null
+        : h('button', { type: 'button', className: 'cs-ed-mini', onClick: () => restoreAll() }, t('settings.editor.hiddenRestoreAll')),
+    ),
     hiddenEntries.length === 0
       ? h('div', { className: 'cs-ed-hintline' }, t('settings.editor.hiddenEmpty'))
       : h(
@@ -749,10 +789,7 @@ function CaptureSurface({ onClose }) {
         t,
         options,
         selection,
-        onSelect: (id) => {
-          setSelection({ type: 'block', id })
-          setCustomName('')
-        },
+        onSelect: (id) => setSelection({ type: 'block', id }),
         onAddZone: (zone) => {
           setAddZone(zone)
           setTab('library')
@@ -838,9 +875,15 @@ function CaptureSurface({ onClose }) {
       setDockDragging(false)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+      window.removeEventListener('blur', stop)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', stop)
+    // A drag that leaves the window never delivers pointerup, so the strip would follow the pointer
+    // forever; a cancelled pointer and a lost focus both end it in place.
+    window.addEventListener('pointercancel', stop)
+    window.addEventListener('blur', stop)
   }
 
   const toggleDock = () => setDockFolded((value) => value !== true)
@@ -939,7 +982,7 @@ function CaptureSurface({ onClose }) {
   }
 }
 
-/** The inspector for one element of the copy: what it is, its name, and what to do with it. */
+/** The mounted surface, so a second open is a no-op and a close can reach it. */
 let mounted = null
 
 /** Whether the surface is already open. */

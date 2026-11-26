@@ -147,6 +147,23 @@ window.__ModuleLoader__.load({
     const IMAGE_MAX_CHARS = 800_000
 
     /**
+     * The components the plugin ships.
+     *
+     * A preset is a component like any the reader saves: a name (its block kind) and a block shape. It is
+     * listed on the shelf, dragged, dropped and opened in the designer by the same code, and the capture
+     * renderer cannot tell it apart from a saved one. The only difference is ownership — a preset cannot
+     * be deleted or changed in place, so opening it in the designer starts a copy that belongs to the
+     * reader. Anything a preset can express, a saved component can express too.
+     */
+    const PRESET_COMPONENTS = [
+      { id: 'text', block: { kind: 'text', text: '', size: 'body', align: 'left' } },
+      { id: 'spacer', block: { kind: 'spacer', height: 24 } },
+      { id: 'image', block: { kind: 'image', src: '', width: 100 } },
+      { id: 'divider', block: { kind: 'divider' } },
+      { id: 'meta', block: { kind: 'meta' } },
+    ]
+
+    /**
      * Tokens a text block can carry.
      *
      * The values come from the conversation the capture is taken from — how many turns it holds, what it
@@ -851,15 +868,18 @@ window.__ModuleLoader__.load({
       return moved
     }
 
-    /** Save the shape of one block as a component the palette can drop again. */
-    function saveCustom(name, block) {
-      const label = typeof name === 'string' ? name.trim().slice(0, BLOCK_NAME_CHARS) : ''
-      if (label === '' || block === null || typeof block !== 'object') return null
-      const current = readOptions()
-      const custom = normalizeCustom({ name: label, block })
-      if (custom === null) return null
-      writeOptions({ custom: [custom, ...current.custom] })
-      return custom
+    /**
+     * Whether a component can stand in the picture as it is.
+     *
+     * Every kind can, except an image without bytes: a picture cannot be painted from nothing, so placing
+     * one would add an invisible block. The shelf sends that case to the designer instead of dropping a
+     * block that draws no pixels.
+     */
+    function canPlace(block) {
+      if (block === null || block === undefined || typeof block !== 'object') return false
+      if (!BLOCK_KINDS.includes(block.kind)) return false
+      if (block.kind === 'image') return typeof block.src === 'string' && block.src.startsWith('data:image/')
+      return true
     }
 
     /** Forget one saved component. */
@@ -935,7 +955,7 @@ window.__ModuleLoader__.load({
         'settings.intro': '在这里直接把截图调成想要的样子。点部件隐藏它，再点放回来；页头和页脚就在它们出现的位置写。改动立刻生效，并保存在本机。',
         'settings.editor.open': '在对话中调整…',
       'settings.editor.noConversation': '先打开一个会话，再回来调整。',
-      'settings.editor.hint': '双击画面里的任意元素即可隐藏，被隐藏的条目列在下方：单击定位，双击还原；画面下方的托盘可以增删内容块、改名和改样式。',
+      'settings.editor.hint': '双击画面里的任意元素即可隐藏，隐藏的条目列在下面，单击定位、双击还原。底部的工具条分三页：内容管页头页脚，元素管隐藏，组件库放你要加的东西。',
       'settings.editor.pick': '选取元素',
       'settings.editor.done': '完成',
       'settings.editor.hide': '隐藏',
@@ -981,7 +1001,7 @@ window.__ModuleLoader__.load({
       'settings.editor.dock.resize': '拖动调整高度，双击折叠',
       'settings.editor.content.add': '添加组件',
       'settings.editor.content.empty': '这一区还没有内容',
-      'settings.editor.content.emptyText': '从组件库拖一个过来，或者点上面的添加',
+      'settings.editor.content.emptyText': '空文本',
       'settings.editor.content.more': '更多操作',
       'settings.editor.content.pickBlock': '点一个内容块，这里会出现它的设置',
       'settings.editor.zone.top': '页头',
@@ -999,11 +1019,9 @@ window.__ModuleLoader__.load({
       'settings.editor.block.imageChange': '换一张',
       'settings.editor.block.imageHint': '拖动放置，或从面板选择图片',
       'settings.editor.block.save': '存为组件',
-      'settings.editor.block.saveName': '组件名',
       'settings.editor.block.delete': '删除',
       'settings.editor.block.toTop': '移到页头',
       'settings.editor.block.toBottom': '移到页脚',
-      'settings.editor.block.dropCustom': '存为自定义组件',
       'settings.editor.block.customFull': '自定义组件已满。',
       'settings.editor.block.zoneHint': '把内容块拖到这里可以调顺序',
       'settings.editor.block.dragHint': '拖进画面即可放置',
@@ -1039,6 +1057,15 @@ window.__ModuleLoader__.load({
         'settings.scale.x3': '3 倍',
         'settings.reset': '恢复默认',
         'settings.resetHint': '清除已保存的选项并回到默认',
+        'settings.editor.library.zone': '放入位置',
+        'settings.editor.library.presets': '系统组件',
+        'settings.editor.library.mine': '我的组件',
+        'settings.editor.library.none': '还没有保存的组件。新建一个，或者把画面里的一块存成组件。',
+        'settings.editor.component.copy': '复制成我的组件',
+        'settings.editor.component.copyHint': '系统组件不能直接改，保存后成为你自己的组件。',
+        'settings.editor.component.copySuffix': '副本',
+        'settings.editor.block.saveHint': '存成组件后可以从组件库反复取用。',
+        'settings.editor.hiddenRestoreAll': '全部还原',
       },
       en: {
         'action.whole': 'Chat screenshot',
@@ -1071,7 +1098,7 @@ window.__ModuleLoader__.load({
         'settings.intro': 'Shape the capture right here. Click a piece to drop it, click it again to bring it back, and write the header and footer where they appear. Changes apply at once and are stored on this machine.',
         'settings.editor.open': 'Adjust in the conversation…',
       'settings.editor.noConversation': 'Open a conversation first, then come back.',
-      'settings.editor.hint': 'Double-click any element to hide it. Hidden entries sit in the list below: click to locate, double-click to restore. The tray under the picture adds content blocks and restyles them.',
+      'settings.editor.hint': 'Double-click any element to hide it; hidden entries sit below, click to locate and double-click to restore. The dock has three pages: content puts blocks above and below the picture, elements holds what you hid, and the library keeps what you can add.',
       'settings.editor.pick': 'Pick an element',
       'settings.editor.done': 'Done',
       'settings.editor.hide': 'Hidden',
@@ -1117,7 +1144,7 @@ window.__ModuleLoader__.load({
       'settings.editor.dock.resize': 'Drag to resize, double-click to fold',
       'settings.editor.content.add': 'Add a block',
       'settings.editor.content.empty': 'Nothing in this zone yet',
-      'settings.editor.content.emptyText': 'Drag one over from the library, or use the add button above',
+      'settings.editor.content.emptyText': 'Empty text',
       'settings.editor.content.more': 'More actions',
       'settings.editor.content.pickBlock': 'Pick a block and its settings show up here',
       'settings.editor.zone.top': 'Top',
@@ -1135,11 +1162,9 @@ window.__ModuleLoader__.load({
       'settings.editor.block.imageChange': 'Replace',
       'settings.editor.block.imageHint': 'Drag to place, or pick an image in the panel',
       'settings.editor.block.save': 'Save as component',
-      'settings.editor.block.saveName': 'Component name',
       'settings.editor.block.delete': 'Delete',
       'settings.editor.block.toTop': 'Move to top',
       'settings.editor.block.toBottom': 'Move to bottom',
-      'settings.editor.block.dropCustom': 'Save as a custom component',
       'settings.editor.block.customFull': 'Custom components are full.',
       'settings.editor.block.zoneHint': 'Drag a content block here to reorder',
       'settings.editor.block.dragHint': 'Drag into the picture to place',
@@ -1176,6 +1201,15 @@ window.__ModuleLoader__.load({
         'settings.scale.x3': '3x',
         'settings.reset': 'Reset to defaults',
         'settings.resetHint': 'Forget the saved options and return to the defaults',
+        'settings.editor.library.zone': 'Place in',
+        'settings.editor.library.presets': 'Shipped',
+        'settings.editor.library.mine': 'Mine',
+        'settings.editor.library.none': 'Nothing saved yet. Start one, or save a block from the picture.',
+        'settings.editor.component.copy': 'Copy as my component',
+        'settings.editor.component.copyHint': 'A shipped component cannot be changed in place. Saving makes it yours.',
+        'settings.editor.component.copySuffix': 'copy',
+        'settings.editor.block.saveHint': 'A saved component comes back from the shelf as often as you like.',
+        'settings.editor.hiddenRestoreAll': 'Restore all',
       },
     }
 
@@ -1424,10 +1458,10 @@ window.__ModuleLoader__.load({
       min-width: 96px;
     }
     .cs-ed-root {
-      /* Above the host's dialog layer (1000) so the surface covers a settings dialog it was opened from;
-         below the tooltip and menu layers (1100) so the host's own popups still sit on top. */
+      /* Under the host's dialog layer (1000) so a dialog opened while the surface is up stays visible,
+         and above the page itself; the host's menus and tooltips (1100) stay on top of both. */
       position: relative;
-      z-index: 1050;
+      z-index: 900;
     }
     .cs-ed-wrap {
       position: fixed;
@@ -1526,6 +1560,12 @@ window.__ModuleLoader__.load({
       color: var(--dsw-alias-label-primary);
       font-weight: 600;
     }
+    .cs-ed-tab-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .cs-ed-tab-count {
       min-width: 16px;
       padding: 0 5px;
@@ -1582,8 +1622,13 @@ window.__ModuleLoader__.load({
       gap: 8px;
       overflow: auto;
       padding: 4px 16px 14px;
-      border-left: 1px solid var(--dsw-alias-border-l1);
       font-size: 12px;
+    }
+    /* The divider belongs between the two columns, not on a fixed side: the element tab puts the list of
+       hidden parts first, and a border on its left would draw a line against the dock's own edge. */
+    .cs-ed-split-main + .cs-ed-split-side,
+    .cs-ed-split-side + .cs-ed-split-main {
+      border-left: 1px solid var(--dsw-alias-border-l1);
     }
     .cs-ed-split-side.is-narrow {
       flex: 0 0 260px;
@@ -1604,6 +1649,28 @@ window.__ModuleLoader__.load({
       font-size: 12px;
       line-height: 1.7;
     }
+    /* A message that takes the place of a part of the surface: no conversation, or nothing selected. */
+    .cs-ed-empty {
+      padding: 10px 12px;
+      border: 1px dashed var(--dsw-alias-border-l1);
+      border-radius: 8px;
+      color: var(--dsw-alias-label-tertiary);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    /* A crash inside the surface keeps the overlay and prints what broke, so the reader can close it. */
+    .cs-ed-crash {
+      margin: 16px;
+      padding: 12px 14px;
+      border: 1px dashed var(--dsw-alias-border-l4);
+      border-radius: 8px;
+      color: var(--dsw-alias-label-primary);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow: auto;
+    }
     .cs-ed-hintline {
       color: var(--dsw-alias-label-tertiary);
       font-size: 12px;
@@ -1612,7 +1679,6 @@ window.__ModuleLoader__.load({
       display: flex;
       flex: 1;
       min-height: 0;
-      overflow: auto;
     }
     .cs-ed-zones {
       display: flex;
@@ -1741,33 +1807,81 @@ window.__ModuleLoader__.load({
       gap: 10px;
       min-width: 0;
     }
-    .cs-ed-add {
+    .cs-ed-lead-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .cs-ed-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .cs-ed-group-name {
+      color: var(--dsw-alias-label-secondary);
+      font-size: 11px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .cs-ed-item {
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 5px 9px;
-      border: 1px dashed var(--dsw-alias-border-l2);
-      border-radius: 6px;
-      background: transparent;
-      color: var(--dsw-alias-label-secondary);
-      font: inherit;
-      font-size: 12px;
-      cursor: grab;
-      text-align: left;
+      padding: 3px 6px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: var(--dsw-alias-bg-layer-2);
+      transition: background .14s ease, border-color .14s ease;
     }
-    .cs-ed-add:hover {
+    .cs-ed-item:hover {
+      background: var(--dsw-alias-bg-layer-3);
+    }
+    .cs-ed-item.is-on {
       border-color: var(--dsw-alias-brand-primary);
-      color: var(--dsw-alias-brand-primary);
     }
-    .cs-ed-add-custom {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .cs-ed-add-custom .cs-ed-add {
+    .cs-ed-item-name {
       flex: 1;
       min-width: 0;
+      padding: 2px 2px;
+      border: 0;
+      background: transparent;
+      color: var(--dsw-alias-label-primary);
+      font: inherit;
+      font-size: 12px;
+      text-align: left;
+      cursor: grab;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
+    .cs-ed-item-name:active {
+      cursor: grabbing;
+    }
+    .cs-ed-item-kind {
+      flex: none;
+      color: var(--dsw-alias-label-tertiary);
+      font-size: 11px;
+    }
+    .cs-ed-item-icon {
+      flex: none;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 4px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--dsw-alias-label-tertiary);
+      font: inherit;
+      font-size: 12px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .cs-ed-item-icon:hover {
+      background: var(--dsw-alias-bg-layer-1);
+      color: var(--dsw-alias-label-primary);
+    }
+    /* The cross that clears one style property or one attribute, sitting at the end of its row. */
     .cs-ed-x {
       flex: none;
       width: 18px;
@@ -1893,8 +2007,10 @@ window.__ModuleLoader__.load({
       gap: 5px;
       min-width: 0;
     }
-    .cs-ed-field-row .cs-ed-input {
+    .cs-ed-field-row .cs-ed-input,
+    .cs-ed-field-row .cs-ed-area {
       flex: none;
+      width: 100%;
     }
     .cs-ed-prop {
       flex: none;
@@ -1940,18 +2056,23 @@ window.__ModuleLoader__.load({
       flex-wrap: wrap;
       gap: 6px;
     }
+    /* The list of hidden parts is a column of the element tab, not a strip under the picture: it fills the
+       height it is given, its own head stays at the top and only the chips scroll. */
     .cs-ed-hidden {
       display: flex;
-      flex: none;
-      flex-wrap: wrap;
-      align-content: flex-start;
-      align-items: center;
-      gap: 6px 8px;
-      max-height: 30%;
+      flex: 1;
+      min-height: 0;
+      flex-direction: column;
+      gap: 8px;
       overflow: auto;
-      padding: 8px 20px 10px;
-      border-top: 1px solid var(--dsw-alias-border-l1);
-      background: var(--dsw-alias-bg-layer-1);
+    }
+    .cs-ed-hidden .cs-ed-panel-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cs-ed-hidden .cs-ed-panel-head .cs-ed-label {
+      margin-left: 0;
     }
     .cs-ed-chip {
       display: inline-flex;
@@ -4402,9 +4523,20 @@ window.__ModuleLoader__.load({
       // uses; the sidebar the copy still carries then sits outside the visible area.
       clone.style.setProperty('margin-left', `${-clipLeft}px`)
       if (scrollerClone !== null) {
-        scrollerClone.style.setProperty('height', 'auto')
-        scrollerClone.style.setProperty('max-height', 'none')
-        scrollerClone.style.setProperty('overflow', 'visible')
+        // The application stores its column heights as inline pixels, measured from the window when it
+        // laid itself out. A copy that is meant to run at its natural length must not inherit them: the
+        // transcript would keep the window's height and leave a pool of empty space below the last turn.
+        // Every ancestor of the transcript is therefore released back to its content.
+        let node = scrollerClone
+        while (node !== null) {
+          node.style.setProperty('height', 'auto')
+          node.style.setProperty('min-height', '0')
+          node.style.setProperty('max-height', 'none')
+          node.style.setProperty('flex', 'none')
+          node.style.setProperty('overflow', 'visible')
+          if (node === clone) break
+          node = node.parentElement
+        }
       }
 
       holder.appendChild(clone)
@@ -4741,6 +4873,12 @@ window.__ModuleLoader__.load({
       return t('settings.editor.align.left')
     }
 
+    /** The two zones, named. */
+    function zoneLabel(t, zone) {
+      if (zone === 'top') return t('settings.editor.zone.top')
+      return t('settings.editor.zone.bottom')
+    }
+
     /** The size names a text block offers. */
     function sizeLabel(t, size) {
       if (size === 'title') return t('settings.editor.block.sizeTitle')
@@ -4748,10 +4886,6 @@ window.__ModuleLoader__.load({
       return t('settings.editor.block.sizeBody')
     }
 
-    /** The conversation the surface is placed over, or null. */
-    /**
-     * Tag, attributes and text of one element of the copy, for the inspector's summary line.
-     */
     /**
      * The element under the pointer, as a line the inspector can print: the opening tag with its own
      * markers, the start of its text, and how many children it has. Punctuation and numbers only, so the
@@ -4765,7 +4899,7 @@ window.__ModuleLoader__.load({
         .map(([name, value]) => (value === '' ? name : `${name}="${value}"`))
         .join(' ')
       const head = attrs === '' ? `<${info.tag}>` : `<${info.tag} ${attrs}>`
-      return `${head} · ${info.text === '' ? '—' : info.text} · ${info.children}`
+      return `${head} | ${info.text === '' ? '-' : info.text} | ${info.children}`
     }
 
     // ===== views/editor/drag.js ======================================
@@ -5152,26 +5286,12 @@ window.__ModuleLoader__.load({
 
       rows.push(
         h(
-          'label',
-          { className: 'cs-ed-field-row' },
-          h('span', { className: 'cs-ed-label' }, t('settings.editor.block.saveName')),
-          h(
-            'div',
-            { className: 'cs-ed-row' },
-            h('input', {
-              className: 'cs-ed-input',
-              placeholder: block.kind,
-              value: props.customName,
-              onChange: (event) => props.onCustomName(event.currentTarget.value),
-            }),
-            h(Button, { variant: 'outline', size: 'sm', onClick: () => props.onSaveCustom() }, t('settings.editor.block.save')),
-          ),
-        ),
-        h(
           'div',
           { className: 'cs-ed-row' },
+          h(Button, { variant: 'outline', size: 'sm', onClick: () => props.onSaveAsComponent() }, t('settings.editor.block.save')),
           h(Button, { variant: 'ghost', size: 'sm', onClick: () => props.onRemove() }, t('settings.editor.block.delete')),
         ),
+        h('div', { className: 'cs-ed-hintline' }, t('settings.editor.block.saveHint')),
       )
 
       return h('div', { className: 'cs-ed-side' }, ...rows)
@@ -5281,12 +5401,16 @@ window.__ModuleLoader__.load({
     // ===== views/editor/components.js ================================
 
     /**
-     * The component designer. A component is one block plus a name, so anything a block can be a
-     * component can be, and the designer, the library and the finished picture all go through the same
-     * renderer: what the designer shows is the block as the picture will show it.
+     * The component designer. A component is one block plus a name, so anything a block can be a component
+     * can be, and the designer, the shelf and the finished picture all go through the same renderer: what
+     * the designer shows is the block as the picture will show it.
+     *
+     * Every field is rendered as its own component — the menus included — because a menu keeps state of
+     * its own. Calling a component as a plain function would put that state on whichever component happens
+     * to be rendering, and a field that comes and goes with the block kind would then change how many
+     * hooks that component calls.
      */
 
-    const KINDS = ['text', 'spacer', 'image', 'divider', 'meta']
     const ALIGNS = ['left', 'center']
 
     /** Read a file into a data URL, which is the only kind of image a picture can carry. */
@@ -5299,12 +5423,13 @@ window.__ModuleLoader__.load({
 
     /**
      * Build the designer.
-     * @param props - t, Menu, Button, draft ({ id, name, block }), onChange(patch), onSave(),
+     * @param props - t, Menu, Button, draft ({ id, name, block, builtin }), onChange(patch), onSave(),
      *   onDelete(), onCancel().
      */
     function componentEditor(props) {
       const { t, Menu, Button, draft, onChange, onSave, onDelete, onCancel } = props
       const previewRef = useRef(null)
+      const fileRef = useRef(null)
       const block = draft.block
 
       useEffect(() => {
@@ -5328,16 +5453,22 @@ window.__ModuleLoader__.load({
 
       if (block.kind === 'text') {
         fields.push(
-          h('textarea', {
-            key: 'text',
-            className: 'cs-ed-area',
-            rows: 3,
-            maxLength: BLOCK_TEXT_CHARS,
-            placeholder: t('settings.editor.block.textHint'),
-            value: block.text,
-            onChange: (event) => setBlock({ text: event.target.value }),
-          }),
-          menuRow({
+          // Every field carries its own label: the designer edits one block, so a bare number box would
+          // leave the reader guessing what it measures.
+          h(
+            'label',
+            { key: 'text', className: 'cs-ed-field-row' },
+            h('span', { className: 'cs-ed-label' }, t('settings.editor.block.text')),
+            h('textarea', {
+              className: 'cs-ed-area',
+              rows: 3,
+              maxLength: BLOCK_TEXT_CHARS,
+              placeholder: t('settings.editor.block.textHint'),
+              value: block.text,
+              onChange: (event) => setBlock({ text: event.target.value }),
+            }),
+          ),
+          h(menuRow, {
             key: 'size',
             Menu,
             Button,
@@ -5347,7 +5478,7 @@ window.__ModuleLoader__.load({
             name: (size) => sizeLabel(t, size),
             onSelect: (size) => setBlock({ size }),
           }),
-          menuRow({
+          h(menuRow, {
             key: 'align',
             Menu,
             Button,
@@ -5362,40 +5493,59 @@ window.__ModuleLoader__.load({
 
       if (block.kind === 'spacer') {
         fields.push(
-          h('input', {
-            key: 'height',
-            className: 'cs-ed-input',
-            type: 'number',
-            min: SPACER_MIN,
-            max: SPACER_MAX,
-            value: block.height,
-            onChange: (event) => setBlock({ height: Number(event.target.value) }),
-          }),
+          h(
+            'label',
+            { key: 'height', className: 'cs-ed-field-row' },
+            h('span', { className: 'cs-ed-label' }, t('settings.editor.block.height')),
+            h('input', {
+              className: 'cs-ed-input',
+              type: 'number',
+              min: SPACER_MIN,
+              max: SPACER_MAX,
+              value: block.height,
+              onChange: (event) => setBlock({ height: Number(event.target.value) }),
+            }),
+          ),
         )
       }
 
       if (block.kind === 'image') {
         fields.push(
-          h('input', {
-            key: 'file',
-            className: 'cs-ed-file',
-            type: 'file',
-            accept: 'image/*',
-            onChange: (event) => {
-              const file = event.target.files === null ? null : event.target.files[0]
-              if (file === null || file === undefined) return
-              readImage(file, (src) => setBlock({ src }))
-            },
-          }),
-          h('input', {
-            key: 'width',
-            className: 'cs-ed-input',
-            type: 'number',
-            min: IMAGE_WIDTH_MIN,
-            max: IMAGE_WIDTH_MAX,
-            value: block.width,
-            onChange: (event) => setBlock({ width: Number(event.target.value) }),
-          }),
+          // A file input cannot be styled and reads as an empty box, so the button is the control and the
+          // input stays out of sight behind it.
+          h(
+            'div',
+            { key: 'file', className: 'cs-ed-row' },
+            h(
+              Button,
+              { variant: 'outline', size: 'sm', onClick: () => fileRef.current?.click() },
+              block.src === '' ? t('settings.editor.block.imagePick') : t('settings.editor.block.imageChange'),
+            ),
+            h('input', {
+              ref: fileRef,
+              type: 'file',
+              accept: 'image/*',
+              className: 'cs-ed-file',
+              onChange: (event) => {
+                const file = event.target.files === null ? null : event.target.files[0]
+                if (file === null || file === undefined) return
+                readImage(file, (src) => setBlock({ src }))
+              },
+            }),
+          ),
+          h(
+            'label',
+            { key: 'width', className: 'cs-ed-field-row' },
+            h('span', { className: 'cs-ed-label' }, t('settings.editor.block.width')),
+            h('input', {
+              className: 'cs-ed-input',
+              type: 'number',
+              min: IMAGE_WIDTH_MIN,
+              max: IMAGE_WIDTH_MAX,
+              value: block.width,
+              onChange: (event) => setBlock({ width: Number(event.target.value) }),
+            }),
+          ),
         )
       }
 
@@ -5403,42 +5553,51 @@ window.__ModuleLoader__.load({
         fields.push(h('div', { key: 'note', className: 'cs-ed-hintline' }, kindLabel(t, block.kind)))
       }
 
+      const canSave = draft.name.trim() !== '' && (block.kind !== 'image' || (typeof block.src === 'string' && block.src !== ''))
+
       return h(
         'div',
         { className: 'cs-ed-cmp' },
-        h('div', { className: 'cs-ed-panel-head' }, t('settings.editor.component.title')),
+        h('div', { className: 'cs-ed-panel-head' }, draft.builtin === true ? t('settings.editor.component.copy') : t('settings.editor.component.title')),
+        draft.builtin === true ? h('div', { className: 'cs-ed-hintline' }, t('settings.editor.component.copyHint')) : null,
         h(
           'div',
           { className: 'cs-ed-row' },
           h('span', { className: 'cs-ed-label' }, t('settings.editor.component.name')),
           h('input', {
             className: 'cs-ed-input',
-            maxLength: 40,
+            maxLength: BLOCK_NAME_CHARS,
             placeholder: t('settings.editor.component.namePlaceholder'),
             value: draft.name,
             onChange: (event) => onChange({ name: event.target.value }),
+            // A copy arrives with a suggested name. Typing should replace the suggestion, not extend it.
+            onFocus: (event) => event.currentTarget.select(),
           }),
         ),
-        menuRow({
+        h(menuRow, {
+          key: 'kind',
           Menu,
           Button,
           label: t('settings.editor.component.kind'),
           value: block.kind,
-          values: KINDS,
+          values: BLOCK_KINDS,
           name: (kind) => kindLabel(t, kind),
           onSelect: (kind) => setBlock({ kind }),
         }),
         ...fields,
-        h('div', { className: 'cs-ed-cmp-preview' }, h('div', { className: 'cs-ed-panel-head' }, t('settings.editor.component.preview')), h('div', { className: 'cs-ed-cmp-stage', ref: previewRef })),
+        h(
+          'div',
+          { className: 'cs-ed-cmp-preview' },
+          h('div', { className: 'cs-ed-panel-head' }, t('settings.editor.component.preview')),
+          h('div', { className: 'cs-ed-cmp-stage', ref: previewRef }),
+        ),
         h('div', { className: 'cs-ed-hintline' }, t('settings.editor.component.hint')),
         h(
           'div',
           { className: 'cs-ed-cmp-actions' },
-          h(Button, { variant: 'primary', size: 'sm', disabled: draft.name.trim() === '', onClick: onSave }, t('settings.editor.component.save')),
+          h(Button, { variant: 'primary', size: 'sm', disabled: !canSave, onClick: onSave }, t('settings.editor.component.save')),
           h(Button, { variant: 'ghost', size: 'sm', onClick: onCancel }, t('settings.editor.component.cancel')),
-          draft.id === null
-            ? null
-            : h(Button, { variant: 'ghost', size: 'sm', onClick: onDelete }, t('settings.editor.component.delete')),
+          draft.id === null ? null : h(Button, { variant: 'ghost', size: 'sm', onClick: onDelete }, t('settings.editor.component.delete')),
         ),
       )
     }
@@ -5446,118 +5605,151 @@ window.__ModuleLoader__.load({
     // ===== views/editor/library.js ===================================
 
     /**
-     * The palette: the five built-in shapes, the components the user saved, and the variables a text
-     * block can print. Every entry is draggable and also clickable, so it works without a mouse.
+     * The shelf: one catalogue of components.
+     *
+     * A component is a name and a block. The plugin ships a few and the reader can save their own, but the
+     * shelf lists them as one kind of thing in one list, drawn by one row: drag it onto the picture, click
+     * it to place it at the end of the zone the shelf is pointed at, open it in the designer with "...".
+     * A shipped component is not deletable and is never edited in place — opening it starts a copy — so
+     * the only difference the reader sees is one missing button, not a second way of doing things.
+     *
+     * The variables a text block can print sit under the components because they are not components: they
+     * go into the text of the block that is already selected.
      */
 
+    /** One component of the catalogue, whether the plugin ships it or the reader saved it. */
+    function entryOf(t, component, builtin) {
+      return {
+        id: component.id,
+        name: builtin ? kindLabel(t, component.block.kind) : component.name,
+        block: component.block,
+        builtin,
+      }
+    }
+
+    /** One row: the name places the component, "..." designs it, "x" forgets a saved one. */
+    function componentRow(props) {
+      const { t, entry, editing, onPlace, onEdit, onDelete, onDrag } = props
+      const startDrag = (event) => {
+        onDrag({ id: null, block: entry.block })
+        if (event.dataTransfer !== null && event.dataTransfer !== undefined) {
+          event.dataTransfer.effectAllowed = 'copy'
+          try {
+            event.dataTransfer.setData(BLOCK_PAYLOAD, JSON.stringify({ kind: entry.block.kind }))
+          } catch {
+            // The module-level payload is what the drop reads, so a refused custom type costs nothing.
+          }
+        }
+      }
+      return h(
+        'div',
+        { key: (entry.builtin ? 'preset:' : 'custom:') + entry.id, className: editing ? 'cs-ed-item is-on' : 'cs-ed-item' },
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'cs-ed-item-name',
+            draggable: 'true',
+            title: t('settings.editor.block.dragHint'),
+            onDragStart: startDrag,
+            onDragEnd: () => onDrag(null),
+            onClick: () => onPlace(entry),
+          },
+          entry.name,
+        ),
+        // A shipped component is named after its kind, so printing the kind again would read "text text".
+        entry.builtin ? null : h('span', { className: 'cs-ed-item-kind' }, kindLabel(t, entry.block.kind)),
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'cs-ed-item-icon',
+            title: t('settings.editor.component.edit'),
+            onClick: () => onEdit(entry),
+          },
+          '...',
+        ),
+        entry.builtin
+          ? null
+          : h(
+              'button',
+              {
+                type: 'button',
+                className: 'cs-ed-item-icon',
+                title: t('settings.editor.component.delete'),
+                onClick: () => onDelete(entry.id),
+              },
+              'x',
+            ),
+      )
+    }
+
     /**
-     * Build the palette.
-     * @param props - t, options, blockSelection, onAdd(kind, shape), onDropCustom(id), onToken(name),
-     *   onDrag(payload), onNewComponent(), onEditComponent(id).
+     * Build the shelf.
+     * @param props - t, Button, Menu, options, selection (a block or null), editingId (the component open
+     *   in the designer), zone (where a click places a component), onPlace(entry), onEdit(entry),
+     *   onDelete(id), onZone(zone), onToken(name), onNew(), onDrag(payload).
      */
     function libraryView(props) {
-      const { t, options, blockSelection, onAdd, onDrag, onToken, onDropCustom, onNewComponent, onEditComponent } = props
-      const library = h(
+      const { t, Button, Menu, options, selection, editingId, zone, onPlace, onEdit, onDelete, onZone, onToken, onNew, onDrag } = props
+      const presets = PRESET_COMPONENTS.map((component) => entryOf(t, component, true))
+      const saved = options.custom.map((component) => entryOf(t, component, false))
+
+      const place = (entry) => {
+        // A component that cannot stand on its own opens in the designer instead of placing nothing: an
+        // image has no pixels until a file is chosen, and that choice belongs in one place.
+        if (canPlace(entry.block)) {
+          onPlace(entry)
+          return
+        }
+        onEdit(entry)
+      }
+
+      const row = (entry) =>
+        h(componentRow, {
+          key: (entry.builtin ? 'preset:' : 'custom:') + entry.id,
+          t,
+          entry,
+          editing: editingId !== null && editingId === entry.id,
+          onPlace: place,
+          onEdit,
+          onDelete,
+          onDrag,
+        })
+
+      return h(
         'div',
         { className: 'cs-ed-lib' },
         h(
           'div',
           { className: 'cs-ed-lead-row' },
           h('span', { className: 'cs-ed-label' }, t('settings.editor.library')),
-          h(
-            'button',
-            { type: 'button', className: 'cs-ed-newcmp', onClick: () => onNewComponent() },
-            '+ ' + t('settings.editor.component.new'),
-          ),
+          h('button', { type: 'button', className: 'cs-ed-newcmp', onClick: () => onNew() }, '+ ' + t('settings.editor.component.new')),
+        ),
+        h(menuRow, {
+          key: 'zone',
+          Menu,
+          Button,
+          label: t('settings.editor.library.zone'),
+          value: zone,
+          values: BLOCK_ZONES,
+          name: (value) => zoneLabel(t, value),
+          onSelect: onZone,
+        }),
+        h(
+          'div',
+          { className: 'cs-ed-group' },
+          h('div', { className: 'cs-ed-group-name' }, t('settings.editor.library.presets')),
+          ...presets.map((entry) => row(entry)),
         ),
         h(
           'div',
-          { className: 'cs-ed-chips' },
-          ...['text', 'spacer', 'image', 'divider', 'meta'].map((kind) =>
-            h(
-              'button',
-              {
-                key: kind,
-                type: 'button',
-                className: 'cs-ed-add',
-                draggable: 'true',
-                title: t('settings.editor.block.dragHint'),
-                onDragStart: (event) => {
-                  onDrag({ id: null, block: { kind } })
-                  if (event.dataTransfer !== null && event.dataTransfer !== undefined) {
-                    event.dataTransfer.effectAllowed = 'copy'
-                    try {
-                      event.dataTransfer.setData(BLOCK_PAYLOAD, JSON.stringify({ kind }))
-                    } catch {
-                      // Same as above: the module-level payload is what the drop reads.
-                    }
-                  }
-                },
-                onDragEnd: () => {
-                  onDrag(null)
-                },
-                onClick: () => onAdd(kind),
-              },
-              kindLabel(t, kind),
-            ),
-          ),
+          { className: 'cs-ed-group' },
+          h('div', { className: 'cs-ed-group-name' }, t('settings.editor.library.mine')),
+          saved.length === 0
+            ? h('div', { className: 'cs-ed-hintline' }, t('settings.editor.library.none'))
+            : saved.map((entry) => row(entry)),
         ),
-        options.custom.length === 0
-          ? null
-          : h(
-              'div',
-              { className: 'cs-ed-customs' },
-              ...options.custom.map((entry) =>
-                h(
-                  'span',
-                  { key: entry.id, className: 'cs-ed-add cs-ed-add-custom' },
-                  h(
-                    'span',
-                    {
-                      className: 'cs-ed-add-name',
-                      draggable: 'true',
-                      title: t('settings.editor.block.dragHint'),
-                      onDragStart: (event) => {
-                        onDrag({ id: null, block: entry.block })
-                        if (event.dataTransfer !== null && event.dataTransfer !== undefined) {
-                          event.dataTransfer.effectAllowed = 'copy'
-                          try {
-                            event.dataTransfer.setData(BLOCK_PAYLOAD, JSON.stringify({ kind: entry.block.kind }))
-                          } catch {
-                            // The module-level payload is authoritative.
-                          }
-                        }
-                      },
-                      onDragEnd: () => {
-                        onDrag(null)
-                      },
-                      onClick: () => onAdd(entry.block.kind, entry.block),
-                    },
-                    entry.name,
-                  ),
-                  h(
-                    'button',
-                    {
-                      type: 'button',
-                      className: 'cs-ed-x',
-                      title: t('settings.editor.component.edit'),
-                      onClick: () => onEditComponent(entry.id),
-                    },
-                    '...',
-                  ),
-                  h(
-                    'button',
-                    {
-                      type: 'button',
-                      className: 'cs-ed-x',
-                      title: t('settings.editor.block.dropCustom'),
-                      onClick: () => onDropCustom(entry.id),
-                    },
-                    '×',
-                  ),
-                ),
-              ),
-            ),
         h('div', { className: 'cs-ed-hintline' }, t('settings.editor.tokensHint')),
         h(
           'div',
@@ -5569,17 +5761,15 @@ window.__ModuleLoader__.load({
                 key: name,
                 type: 'button',
                 className: 'cs-ed-token',
-                disabled: blockSelection === null || blockSelection.kind !== 'text',
+                disabled: selection === null || selection.kind !== 'text',
                 onClick: () => onToken(name),
               },
               `{${name}}`,
             ),
           ),
         ),
-        options.custom.length >= MAX_CUSTOM ? h('div', { className: 'cs-ed-hintline' }, t('settings.editor.block.customFull')) : null,
+        saved.length >= MAX_CUSTOM ? h('div', { className: 'cs-ed-hintline' }, t('settings.editor.block.customFull')) : null,
       )
-
-      return library
     }
 
     // ===== views/editor/dock.js ======================================
@@ -5668,11 +5858,17 @@ window.__ModuleLoader__.load({
      */
 
 
-    /** The names the built-in pieces answer to, so a hidden one still reads as something. */
+    /** The conversation the surface covers, or null when there is none on screen. */
     function findConversation() {
       const scroller = document.querySelector(`[${SCROLL_ATTRIBUTE}]`)
       if (!(scroller instanceof HTMLElement) || scroller.clientWidth < 1) return null
       return scroller
+    }
+
+    /** A block's content without the place it holds in the picture, which is what a component stores. */
+    function blockShape(block) {
+      const { id, zone, ...shape } = block
+      return shape
     }
 
     /** The rectangle the conversation occupies, so the surface sits exactly over it. */
@@ -5743,7 +5939,6 @@ window.__ModuleLoader__.load({
       const [draftValue, setDraftValue] = useState('')
       const [draftAttr, setDraftAttr] = useState('')
       const [draftAttrValue, setDraftAttrValue] = useState('')
-      const [customName, setCustomName] = useState('')
       const [draftComponent, setDraftComponent] = useState(null)
 
       pickRef.current = pick
@@ -5813,7 +6008,6 @@ window.__ModuleLoader__.load({
 
         const chooseBlock = (id) => {
           setSelection({ type: 'block', id })
-          setCustomName('')
           setTab('content')
           return id
         }
@@ -5950,15 +6144,18 @@ window.__ModuleLoader__.load({
         }
       }, [revision])
 
-      // The picked element is outlined where it sits, so the inspector always says which element it is
-      // talking about. A hidden element has no box, so it cannot be outlined — its chip locates it instead.
+      // What is selected is outlined where it sits: an element by its selector, a block by its id, so the
+      // tray always says which thing it is talking about. A hidden element has no box, so it cannot be
+      // outlined — its chip locates it instead.
       useEffect(() => {
         const stage = stageRef.current
-        if (stage === null) return undefined
-        if (selection === null || selection.type === 'block') return undefined
+        if (stage === null || selection === null) return undefined
         let marked = null
         try {
-          marked = stage.clone.querySelector(selection.selector)
+          marked =
+            selection.type === 'block'
+              ? stage.clone.querySelector(`[${BLOCK_ATTRIBUTE}="${selection.id}"]`)
+              : stage.clone.querySelector(selection.selector)
         } catch {
           marked = null
         }
@@ -6041,7 +6238,7 @@ window.__ModuleLoader__.load({
       }
 
       /** Put one hidden entry back into the picture, and forget a rule that only existed to hide. */
-      const restore = (entry) => {
+      const restore = (entry, quiet = false) => {
         if (entry.kind === 'piece') {
           writeOptions({ [entry.option]: false })
         } else {
@@ -6053,7 +6250,7 @@ window.__ModuleLoader__.load({
           if (silent) dropRule(entry.selector)
           else saveRule(entry.selector, { hide: false })
         }
-        bump()
+        if (!quiet) bump()
       }
 
       const patchRule = (patch) => {
@@ -6100,14 +6297,46 @@ window.__ModuleLoader__.load({
         bump()
       }
 
-      /** Append one block of a kind to the zone the reader picked, for a click instead of a drag. */
-      const appendBlock = (kind, shape) => {
-        const created = addBlock(addZone, { ...(shape ?? {}), kind, zone: addZone })
-        if (created !== null) {
-          setSelection({ type: 'block', id: created.id })
-          setTab('content')
-          bump()
-        }
+      /**
+       * Place a component at the end of the zone the shelf points at, for a click instead of a drag.
+       *
+       * The shelf stays open: adding content is a run of small decisions and the picture is already showing
+       * the result, so leaving the shelf after every click would hide the one place the next click comes
+       * from. The new block is selected, which outlines it in the picture and focuses the content tab's
+       * inspector the moment the reader goes there.
+       */
+      const placeComponent = (entry) => {
+        const created = addBlock(addZone, { ...entry.block, zone: addZone })
+        if (created === null) return
+        setSelection({ type: 'block', id: created.id })
+        bump()
+      }
+
+      /** Open one component of the shelf in the designer; a shipped one opens as a copy. */
+      const editComponent = (entry) => {
+        const builtin = entry.builtin === true
+        const label = kindLabel(t, entry.block.kind)
+        setDraftComponent({
+          id: builtin ? null : entry.id,
+          name: builtin ? `${label} ${t('settings.editor.component.copySuffix')}` : entry.name,
+          block: { ...entry.block },
+          builtin,
+        })
+        setTab('library')
+        setPick(false)
+      }
+
+      /** Save the selected block as a component: the same designer, with that block as the draft. */
+      const saveAsComponent = () => {
+        if (blockSelection === null) return
+        setDraftComponent({
+          id: null,
+          name: `${kindLabel(t, blockSelection.kind)} ${t('settings.editor.component.copySuffix')}`,
+          block: blockShape(blockSelection),
+          builtin: false,
+        })
+        setTab('library')
+        setPick(false)
       }
 
       /** Add one token to the text of the selected block. */
@@ -6192,6 +6421,12 @@ window.__ModuleLoader__.load({
         }
       }
 
+      /** Put every hidden entry back in one go, with one rebuild instead of one per entry. */
+      const restoreAll = () => {
+        for (const entry of hiddenEntries) restore(entry, true)
+        bump()
+      }
+
       const styleKeys = rule === null ? [] : Object.keys(rule.style)
       const attrKeys = rule === null ? [] : Object.keys(rule.attrs)
       const detail =
@@ -6208,20 +6443,12 @@ window.__ModuleLoader__.load({
               Menu,
               fileRef,
               onPickImage: pickImage,
-              customName,
-              setCustomName,
-              onCustomName: (value) => setCustomName(value),
-              onSaveCustom: () => {
-                const name = customName.trim() === '' ? kindLabel(t, blockSelection.kind) : customName
-                saveCustom(String(name), blockSelection)
-                setCustomName('')
-              },
+              onSaveAsComponent: saveAsComponent,
               onRemove: () => {
                 removeBlock(blockSelection.id)
                 setSelection(null)
                 bump()
               },
-              onToken: addToken,
               onPatch: (patch) => {
                 updateBlock(blockSelection.id, patch)
                 bump()
@@ -6266,24 +6493,25 @@ window.__ModuleLoader__.load({
 
       const library = h(libraryView, {
         t,
+        Button,
+        Menu,
         options,
-        blockSelection,
-        onAdd: (kind, shape) => appendBlock(kind, shape),
-        onDropCustom: (id) => {
+        selection: blockSelection,
+        editingId: draftComponent === null ? null : draftComponent.id,
+        zone: addZone,
+        onPlace: placeComponent,
+        onEdit: editComponent,
+        onDelete: (id) => {
           dropCustom(id)
+          setDraftComponent((current) => (current !== null && current.id === id ? null : current))
           bump()
         },
+        onZone: (next) => setAddZone(next),
         onToken: addToken,
-        onNewComponent: () => {
-          setDraftComponent({ id: null, name: '', block: { kind: 'text', text: '', size: 'body', align: 'left' } })
+        onNew: () => {
+          setDraftComponent({ id: null, name: '', block: { kind: 'text', text: '', size: 'body', align: 'left' }, builtin: false })
           setTab('library')
           setPick(false)
-        },
-        onEditComponent: (id) => {
-          const entry = options.custom.find((item) => item.id === id)
-          if (entry === undefined) return
-          setDraftComponent({ id: entry.id, name: entry.name, block: { ...entry.block } })
-          setTab('library')
         },
         onDrag: (payload) => {
           writeDrag(payload)
@@ -6314,13 +6542,20 @@ window.__ModuleLoader__.load({
       const tabs = [
         { id: 'content', label: t('settings.editor.tab.content'), count: options.blocks.length },
         { id: 'element', label: t('settings.editor.tab.element'), count: hiddenEntries.length },
-        { id: 'library', label: t('settings.editor.tab.library'), count: 0 },
+        { id: 'library', label: t('settings.editor.tab.library'), count: PRESET_COMPONENTS.length + options.custom.length },
       ]
 
       const hiddenSection = h(
         'div',
         { className: 'cs-ed-hidden' },
-        h('div', { className: 'cs-ed-panel-head' }, t('settings.editor.hidden')),
+        h(
+          'div',
+          { className: 'cs-ed-panel-head' },
+          h('span', { className: 'cs-ed-label' }, t('settings.editor.hidden')),
+          hiddenEntries.length === 0
+            ? null
+            : h('button', { type: 'button', className: 'cs-ed-mini', onClick: () => restoreAll() }, t('settings.editor.hiddenRestoreAll')),
+        ),
         hiddenEntries.length === 0
           ? h('div', { className: 'cs-ed-hintline' }, t('settings.editor.hiddenEmpty'))
           : h(
@@ -6356,10 +6591,7 @@ window.__ModuleLoader__.load({
             t,
             options,
             selection,
-            onSelect: (id) => {
-              setSelection({ type: 'block', id })
-              setCustomName('')
-            },
+            onSelect: (id) => setSelection({ type: 'block', id }),
             onAddZone: (zone) => {
               setAddZone(zone)
               setTab('library')
@@ -6445,9 +6677,15 @@ window.__ModuleLoader__.load({
           setDockDragging(false)
           window.removeEventListener('pointermove', move)
           window.removeEventListener('pointerup', stop)
+          window.removeEventListener('pointercancel', stop)
+          window.removeEventListener('blur', stop)
         }
         window.addEventListener('pointermove', move)
         window.addEventListener('pointerup', stop)
+        // A drag that leaves the window never delivers pointerup, so the strip would follow the pointer
+        // forever; a cancelled pointer and a lost focus both end it in place.
+        window.addEventListener('pointercancel', stop)
+        window.addEventListener('blur', stop)
       }
 
       const toggleDock = () => setDockFolded((value) => value !== true)
@@ -6546,7 +6784,7 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /** The inspector for one element of the copy: what it is, its name, and what to do with it. */
+    /** The mounted surface, so a second open is a no-op and a close can reach it. */
     let mounted = null
 
     /** Whether the surface is already open. */
@@ -6905,10 +7143,17 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function SettingsSection() {
+    function SettingsSection(props) {
       const t = useTranslate()
       const options = useOptions()
       const ready = useMemo(() => conversationReady(), [])
+
+      // The surface covers the conversation, so it cannot stand over this dialog: the dialog steps aside
+      // first, and the surface then owns the screen at its own layer.
+      const open = () => {
+        if (typeof props.close === 'function') props.close()
+        openEditor()
+      }
 
       const edgeEntries = EDGE_CHOICES.map((choice) => ({
         id: String(choice),
@@ -6932,7 +7177,7 @@ window.__ModuleLoader__.load({
             ? null
             : h(
                 native.Button,
-                { variant: 'primary', size: 'sm', disabled: !ready, onClick: () => openEditor() },
+                { variant: 'primary', size: 'sm', disabled: !ready, onClick: () => open() },
                 t('settings.editor.open'),
               ),
           ready ? null : h('div', { className: 'cs-set-desc' }, t('settings.editor.noConversation')),

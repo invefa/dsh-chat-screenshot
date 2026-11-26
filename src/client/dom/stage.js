@@ -155,9 +155,20 @@ export function buildStage(anchor, options, labels) {
   // uses; the sidebar the copy still carries then sits outside the visible area.
   clone.style.setProperty('margin-left', `${-clipLeft}px`)
   if (scrollerClone !== null) {
-    scrollerClone.style.setProperty('height', 'auto')
-    scrollerClone.style.setProperty('max-height', 'none')
-    scrollerClone.style.setProperty('overflow', 'visible')
+    // The application stores its column heights as inline pixels, measured from the window when it
+    // laid itself out. A copy that is meant to run at its natural length must not inherit them: the
+    // transcript would keep the window's height and leave a pool of empty space below the last turn.
+    // Every ancestor of the transcript is therefore released back to its content.
+    let node = scrollerClone
+    while (node !== null) {
+      node.style.setProperty('height', 'auto')
+      node.style.setProperty('min-height', '0')
+      node.style.setProperty('max-height', 'none')
+      node.style.setProperty('flex', 'none')
+      node.style.setProperty('overflow', 'visible')
+      if (node === clone) break
+      node = node.parentElement
+    }
   }
 
   holder.appendChild(clone)

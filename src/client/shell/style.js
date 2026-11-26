@@ -181,10 +181,10 @@ export const STYLES = String.raw`
   min-width: 96px;
 }
 .cs-ed-root {
-  /* Above the host's dialog layer (1000) so the surface covers a settings dialog it was opened from;
-     below the tooltip and menu layers (1100) so the host's own popups still sit on top. */
+  /* Under the host's dialog layer (1000) so a dialog opened while the surface is up stays visible,
+     and above the page itself; the host's menus and tooltips (1100) stay on top of both. */
   position: relative;
-  z-index: 1050;
+  z-index: 900;
 }
 .cs-ed-wrap {
   position: fixed;
@@ -283,6 +283,12 @@ export const STYLES = String.raw`
   color: var(--dsw-alias-label-primary);
   font-weight: 600;
 }
+.cs-ed-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .cs-ed-tab-count {
   min-width: 16px;
   padding: 0 5px;
@@ -339,8 +345,13 @@ export const STYLES = String.raw`
   gap: 8px;
   overflow: auto;
   padding: 4px 16px 14px;
-  border-left: 1px solid var(--dsw-alias-border-l1);
   font-size: 12px;
+}
+/* The divider belongs between the two columns, not on a fixed side: the element tab puts the list of
+   hidden parts first, and a border on its left would draw a line against the dock's own edge. */
+.cs-ed-split-main + .cs-ed-split-side,
+.cs-ed-split-side + .cs-ed-split-main {
+  border-left: 1px solid var(--dsw-alias-border-l1);
 }
 .cs-ed-split-side.is-narrow {
   flex: 0 0 260px;
@@ -361,6 +372,28 @@ export const STYLES = String.raw`
   font-size: 12px;
   line-height: 1.7;
 }
+/* A message that takes the place of a part of the surface: no conversation, or nothing selected. */
+.cs-ed-empty {
+  padding: 10px 12px;
+  border: 1px dashed var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+/* A crash inside the surface keeps the overlay and prints what broke, so the reader can close it. */
+.cs-ed-crash {
+  margin: 16px;
+  padding: 12px 14px;
+  border: 1px dashed var(--dsw-alias-border-l4);
+  border-radius: 8px;
+  color: var(--dsw-alias-label-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow: auto;
+}
 .cs-ed-hintline {
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
@@ -369,7 +402,6 @@ export const STYLES = String.raw`
   display: flex;
   flex: 1;
   min-height: 0;
-  overflow: auto;
 }
 .cs-ed-zones {
   display: flex;
@@ -498,33 +530,81 @@ export const STYLES = String.raw`
   gap: 10px;
   min-width: 0;
 }
-.cs-ed-add {
+.cs-ed-lead-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.cs-ed-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.cs-ed-group-name {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.cs-ed-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 9px;
-  border: 1px dashed var(--dsw-alias-border-l2);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  font: inherit;
-  font-size: 12px;
-  cursor: grab;
-  text-align: left;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--dsw-alias-bg-layer-2);
+  transition: background .14s ease, border-color .14s ease;
 }
-.cs-ed-add:hover {
+.cs-ed-item:hover {
+  background: var(--dsw-alias-bg-layer-3);
+}
+.cs-ed-item.is-on {
   border-color: var(--dsw-alias-brand-primary);
-  color: var(--dsw-alias-brand-primary);
 }
-.cs-ed-add-custom {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.cs-ed-add-custom .cs-ed-add {
+.cs-ed-item-name {
   flex: 1;
   min-width: 0;
+  padding: 2px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: grab;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.cs-ed-item-name:active {
+  cursor: grabbing;
+}
+.cs-ed-item-kind {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+.cs-ed-item-icon {
+  flex: none;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cs-ed-item-icon:hover {
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+}
+/* The cross that clears one style property or one attribute, sitting at the end of its row. */
 .cs-ed-x {
   flex: none;
   width: 18px;
@@ -650,8 +730,10 @@ export const STYLES = String.raw`
   gap: 5px;
   min-width: 0;
 }
-.cs-ed-field-row .cs-ed-input {
+.cs-ed-field-row .cs-ed-input,
+.cs-ed-field-row .cs-ed-area {
   flex: none;
+  width: 100%;
 }
 .cs-ed-prop {
   flex: none;
@@ -697,18 +779,23 @@ export const STYLES = String.raw`
   flex-wrap: wrap;
   gap: 6px;
 }
+/* The list of hidden parts is a column of the element tab, not a strip under the picture: it fills the
+   height it is given, its own head stays at the top and only the chips scroll. */
 .cs-ed-hidden {
   display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  align-items: center;
-  gap: 6px 8px;
-  max-height: 30%;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
   overflow: auto;
-  padding: 8px 20px 10px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-layer-1);
+}
+.cs-ed-hidden .cs-ed-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cs-ed-hidden .cs-ed-panel-head .cs-ed-label {
+  margin-left: 0;
 }
 .cs-ed-chip {
   display: inline-flex;
