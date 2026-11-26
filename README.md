@@ -11,13 +11,17 @@ Nothing about the picture is fixed. Open the editor and the conversation itself 
 ## Install
 
 ```bash
-dsh plugin --profile web add D:\Projects\Agent\DSH\Plugin\ChatScreenshot
+dsh plugin --profile web add -w https://github.com/invefa/dsh-chat-screenshot
 ```
+
+Use `--profile desktop` for the desktop app instead of `web`, and quit the app before running the command. A local checkout works the same way: pass its folder in place of the repository address. The plugin has no build step and no dependencies, so what arrives is ready to load.
+
+`-w` is not optional. A profile is a pnpm workspace root (`pnpm-workspace.yaml` lists `packages: [.]`), and pnpm refuses to add a dependency to the root without it, failing with `ERR_PNPM_ADDING_TO_ROOT`. The command both adds the dependency and registers the bundle in `dsh.profile.bundles`; the plugin loads on the next start or page reload.
 
 Remove it again:
 
 ```bash
-dsh plugin --profile web remove dsh-chat-screenshot
+dsh plugin --profile web remove -w dsh-chat-screenshot
 ```
 
 The plugin id is `dsh-chat-screenshot`. Reload the page after installing.

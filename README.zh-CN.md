@@ -11,13 +11,17 @@
 ## 安装
 
 ```bash
-dsh plugin --profile web add D:\Projects\Agent\DSH\Plugin\ChatScreenshot
+dsh plugin --profile web add -w https://github.com/invefa/dsh-chat-screenshot
 ```
+
+桌面版把 profile 换成 `desktop`，并在执行前退出应用。本地 clone 的目录也能直接装，把它替换成仓库地址即可。插件没有依赖也没有构建步骤，装进来的就是能直接加载的东西。
+
+`-w` 不能省。profile 本身是 pnpm 的工作区根（`pnpm-workspace.yaml` 里写着 `packages: [.]`），pnpm 拒绝往根上加依赖，会报 `ERR_PNPM_ADDING_TO_ROOT`。这条命令同时做两件事：加依赖，把插件登记进 `dsh.profile.bundles`；下次启动或刷新页面即可加载。
 
 卸载：
 
 ```bash
-dsh plugin --profile web remove dsh-chat-screenshot
+dsh plugin --profile web remove -w dsh-chat-screenshot
 ```
 
 插件 id 是 `dsh-chat-screenshot`，装完刷新页面。

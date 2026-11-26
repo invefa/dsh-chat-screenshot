@@ -1,6 +1,6 @@
 {
   "name": "dsh-chat-screenshot",
-  "version": "3.2.1",
+  "version": "3.2.2",
   "private": true,
   "type": "module",
   "description": "Shape a DeepSeek Harness conversation into one PNG and copy it to the clipboard",
@@ -68,5 +68,3 @@
     }
   }
 }
-
-
