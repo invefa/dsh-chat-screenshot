@@ -542,10 +542,19 @@ function CaptureSurface({ onClose }) {
     setPick(false)
   }
 
-  /** Add one token to the text of the selected block. */
+  /** Add one token to the text field in reach: the designer's draft, or the selected block. */
   const addToken = (name) => {
+    const token = `{${name}}`
+    if (draftComponent !== null) {
+      setDraftComponent((current) => {
+        if (current === null || current.block.kind !== 'text') return current
+        const text = current.block.text === '' ? token : `${current.block.text} ${token}`
+        return { ...current, block: { ...current.block, text } }
+      })
+      return
+    }
     if (blockSelection === null || blockSelection.kind !== 'text') return
-    const text = blockSelection.text === '' ? `{${name}}` : `${blockSelection.text} {${name}}`
+    const text = blockSelection.text === '' ? token : `${blockSelection.text} ${token}`
     updateBlock(blockSelection.id, { text })
     bump()
   }
@@ -703,7 +712,13 @@ function CaptureSurface({ onClose }) {
     Button,
     Menu,
     options,
-    selection: blockSelection,
+    // The token chips write into whichever text field is on screen: the designer's draft while it is
+    // open, otherwise the selected block in the inspector. Without a text field they are inert, so
+    // they are disabled rather than silently doing nothing.
+    tokenText:
+      draftComponent !== null
+        ? draftComponent.block.kind === 'text'
+        : blockSelection !== null && blockSelection.kind === 'text',
     editingId: draftComponent === null ? null : draftComponent.id,
     zone: addZone,
     onPlace: placeComponent,

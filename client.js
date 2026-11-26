@@ -5841,12 +5841,12 @@ window.__ModuleLoader__.load({
 
     /**
      * Build the shelf.
-     * @param props - t, Button, Menu, options, selection (a block or null), editingId (the component open
-     *   in the designer), zone (where a click places a component), onPlace(entry), onEdit(entry),
-     *   onDelete(id), onZone(zone), onToken(name), onNew(), onDrag(payload).
+     * @param props - t, Button, Menu, options, tokenText (true while a text field is in reach), editingId
+     *   (the component open in the designer), zone (where a click places a component), onPlace(entry),
+     *   onEdit(entry), onDelete(id), onZone(zone), onToken(name), onNew(), onDrag(payload).
      */
     function libraryView(props) {
-      const { t, Button, Menu, options, selection, editingId, zone, onPlace, onEdit, onDelete, onZone, onToken, onNew, onDrag } = props
+      const { t, Button, Menu, options, tokenText, editingId, zone, onPlace, onEdit, onDelete, onZone, onToken, onNew, onDrag } = props
       const presets = PRESET_COMPONENTS.map((component) => entryOf(t, component, true))
       const saved = options.custom.map((component) => entryOf(t, component, false))
 
@@ -5916,7 +5916,7 @@ window.__ModuleLoader__.load({
                 key: name,
                 type: 'button',
                 className: 'cs-ed-token',
-                disabled: selection === null || selection.kind !== 'text',
+                disabled: tokenText !== true,
                 onClick: () => onToken(name),
               },
               `{${name}}`,
@@ -6499,10 +6499,19 @@ window.__ModuleLoader__.load({
         setPick(false)
       }
 
-      /** Add one token to the text of the selected block. */
+      /** Add one token to the text field in reach: the designer's draft, or the selected block. */
       const addToken = (name) => {
+        const token = `{${name}}`
+        if (draftComponent !== null) {
+          setDraftComponent((current) => {
+            if (current === null || current.block.kind !== 'text') return current
+            const text = current.block.text === '' ? token : `${current.block.text} ${token}`
+            return { ...current, block: { ...current.block, text } }
+          })
+          return
+        }
         if (blockSelection === null || blockSelection.kind !== 'text') return
-        const text = blockSelection.text === '' ? `{${name}}` : `${blockSelection.text} {${name}}`
+        const text = blockSelection.text === '' ? token : `${blockSelection.text} ${token}`
         updateBlock(blockSelection.id, { text })
         bump()
       }
@@ -6660,7 +6669,13 @@ window.__ModuleLoader__.load({
         Button,
         Menu,
         options,
-        selection: blockSelection,
+        // The token chips write into whichever text field is on screen: the designer's draft while it is
+        // open, otherwise the selected block in the inspector. Without a text field they are inert, so
+        // they are disabled rather than silently doing nothing.
+        tokenText:
+          draftComponent !== null
+            ? draftComponent.block.kind === 'text'
+            : blockSelection !== null && blockSelection.kind === 'text',
         editingId: draftComponent === null ? null : draftComponent.id,
         zone: addZone,
         onPlace: placeComponent,

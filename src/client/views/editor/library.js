@@ -86,12 +86,12 @@ function componentRow(props) {
 
 /**
  * Build the shelf.
- * @param props - t, Button, Menu, options, selection (a block or null), editingId (the component open
- *   in the designer), zone (where a click places a component), onPlace(entry), onEdit(entry),
- *   onDelete(id), onZone(zone), onToken(name), onNew(), onDrag(payload).
+ * @param props - t, Button, Menu, options, tokenText (true while a text field is in reach), editingId
+ *   (the component open in the designer), zone (where a click places a component), onPlace(entry),
+ *   onEdit(entry), onDelete(id), onZone(zone), onToken(name), onNew(), onDrag(payload).
  */
 export function libraryView(props) {
-  const { t, Button, Menu, options, selection, editingId, zone, onPlace, onEdit, onDelete, onZone, onToken, onNew, onDrag } = props
+  const { t, Button, Menu, options, tokenText, editingId, zone, onPlace, onEdit, onDelete, onZone, onToken, onNew, onDrag } = props
   const presets = PRESET_COMPONENTS.map((component) => entryOf(t, component, true))
   const saved = options.custom.map((component) => entryOf(t, component, false))
 
@@ -161,7 +161,7 @@ export function libraryView(props) {
             key: name,
             type: 'button',
             className: 'cs-ed-token',
-            disabled: selection === null || selection.kind !== 'text',
+            disabled: tokenText !== true,
             onClick: () => onToken(name),
           },
           `{${name}}`,
