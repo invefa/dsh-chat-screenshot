@@ -119,6 +119,14 @@ Documentation is English with a `.zh-CN.md` edition.
 - A block owns its own numbers. A divider carries `thickness` and `gap`, a spacer its `height`, an image
   its `width`, text its `size` and `align`; `normalizeContent` clamps each one, the designer and the
   inspector edit the same fields, and the renderer reads nothing else.
+- A chip that writes into a field serves whichever field is on screen: the token chips append to the
+  designer's draft while it is open and to the selected block otherwise, and are disabled only when
+  neither holds text. A control that is offered next to a field and does nothing there is worse than
+  no control at all.
+- The element note describes the live element, not the copy. The copy carries the selection class and
+  the hiding style the surface has just applied, so printing it back made the picture's own
+  bookkeeping look like part of the conversation; the live page is read first and the copy only as a
+  fallback, and two lines of it are clamped so the controls stay in place.
 - The surface sits below the host's dialog layer (900 against 1000), so a dialog opened while it is up
   stays visible; a dialog that opens the surface closes itself first. The overlay used to sit at 1050
   to cover the settings dialog it was opened from, which hid every later dialog behind it.
