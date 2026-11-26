@@ -1,0 +1,62 @@
+{
+  "name": "dsh-chat-screenshot",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Screenshot a chat, or one turn of it, from the DSH Web UI to the clipboard as a PNG",
+  "license": "GPL-3.0-only",
+  "author": "invefa",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "icon": "./icon.svg",
+  "files": [
+    "index.js",
+    "client.js",
+    "src",
+    "build.mjs",
+    "checks",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale",
+    "README.md",
+    "README.zh-CN.md",
+    "AGENTS.md",
+    "AGENTS.zh-CN.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "check": "node build.mjs --check && node checks/structure.mjs && node checks/i18n.mjs && node checks/logic.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "screenshot",
+    "clipboard",
+    "chat"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-chat"
+      ]
+    }
+  }
+}

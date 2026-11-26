@@ -1,0 +1,23 @@
+[
+  "shell/const.js",
+  "shell/runtime.js",
+  "shell/i18n.js",
+  "shell/style.js",
+  "render/scale.js",
+  "render/crop.js",
+  "render/canvas.js",
+  "render/svg.js",
+  "render/index.js",
+  "output/clipboard.js",
+  "output/download.js",
+  "dom/geometry.js",
+  "dom/clone.js",
+  "dom/band.js",
+  "dom/paging.js",
+  "dom/turn.js",
+  "dom/capture.js",
+  "shell/status.js",
+  "views/icons.js",
+  "views/buttons.js",
+  "apply.js"
+]

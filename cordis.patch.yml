@@ -1,0 +1,6 @@
+# Inserts this plugin into a profile's layer stack. The key is `insert`, not `add`: a patch without
+# `insert` targets an existing row by id, and one that names no row is skipped with only a warning.
+- insert:
+    - id: chat-screenshot
+      name: dsh-chat-screenshot
+      config: {}
