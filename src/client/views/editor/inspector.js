@@ -168,7 +168,7 @@ export function elementInspector(props) {
         t('settings.editor.side.add'),
       ),
     ),
-    detail === null ? null : h('div', { className: 'cs-ed-note' }, detail),
+    detail === null ? null : h('div', { className: 'cs-ed-note cs-ed-detail' }, detail),
     h('div', { className: 'cs-ed-note' }, t('settings.editor.side.ruleNote')),
     h(
       'div',

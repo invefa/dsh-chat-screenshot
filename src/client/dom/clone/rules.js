@@ -152,6 +152,14 @@ export function describeElement(element) {
   const attrs = {}
   for (const name of element.getAttributeNames()) {
     if (IGNORED_ATTRIBUTES.has(name)) continue
+    // The surface's own classes and the styles it applies while editing are bookkeeping, not part of
+    // the conversation: a reader would take `cs-ed-sel` for a marker the host put there.
+    if (name === 'class') {
+      const kept = [...element.classList].filter((entry) => !entry.startsWith('cs-ed'))
+      if (kept.length === 0) continue
+      attrs[name] = kept.join(' ')
+      continue
+    }
     attrs[name] = element.getAttribute(name) ?? ''
   }
   const text = (element.textContent ?? '').replace(/\s+/g, ' ').trim()

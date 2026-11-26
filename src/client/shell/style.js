@@ -717,6 +717,13 @@ export const STYLES = String.raw`
   font-size: 11px;
   line-height: 1.6;
 }
+.cs-ed-detail {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  word-break: break-all;
+}
 .cs-ed-row {
   display: flex;
   flex-wrap: wrap;

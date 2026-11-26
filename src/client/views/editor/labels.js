@@ -74,17 +74,18 @@ export function sizeLabel(t, size) {
 
 /**
  * The element under the pointer, as a line the inspector can print: the opening tag with its own
- * markers, the start of its text, and how many children it has. Punctuation and numbers only, so the
- * line reads the same in every language.
+ * markers, then the start of its text. Punctuation and numbers only, so the line reads the same in
+ * every language; the count of children is left out because a trailing digit reads as another field.
  */
-export function describeSelected(clone, selector) {
-  const node = clone.querySelector(selector)
+export function describeSelected(scope, selector) {
+  if (scope === null || scope === undefined) return null
+  const node = scope.querySelector(selector)
   if (node === null) return null
   const info = describeElement(node)
   const attrs = Object.entries(info.attrs)
     .map(([name, value]) => (value === '' ? name : `${name}="${value}"`))
     .join(' ')
   const head = attrs === '' ? `<${info.tag}>` : `<${info.tag} ${attrs}>`
-  return `${head} | ${info.text === '' ? '-' : info.text} | ${info.children}`
+  return `${head} | ${info.text === '' ? '-' : info.text}`
 }
 

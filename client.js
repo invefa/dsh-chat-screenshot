@@ -2031,6 +2031,13 @@ window.__ModuleLoader__.load({
       font-size: 11px;
       line-height: 1.6;
     }
+    .cs-ed-detail {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+      word-break: break-all;
+    }
     .cs-ed-row {
       display: flex;
       flex-wrap: wrap;
@@ -3604,6 +3611,14 @@ window.__ModuleLoader__.load({
       const attrs = {}
       for (const name of element.getAttributeNames()) {
         if (IGNORED_ATTRIBUTES.has(name)) continue
+        // The surface's own classes and the styles it applies while editing are bookkeeping, not part of
+        // the conversation: a reader would take `cs-ed-sel` for a marker the host put there.
+        if (name === 'class') {
+          const kept = [...element.classList].filter((entry) => !entry.startsWith('cs-ed'))
+          if (kept.length === 0) continue
+          attrs[name] = kept.join(' ')
+          continue
+        }
         attrs[name] = element.getAttribute(name) ?? ''
       }
       const text = (element.textContent ?? '').replace(/\s+/g, ' ').trim()
@@ -4935,18 +4950,19 @@ window.__ModuleLoader__.load({
 
     /**
      * The element under the pointer, as a line the inspector can print: the opening tag with its own
-     * markers, the start of its text, and how many children it has. Punctuation and numbers only, so the
-     * line reads the same in every language.
+     * markers, then the start of its text. Punctuation and numbers only, so the line reads the same in
+     * every language; the count of children is left out because a trailing digit reads as another field.
      */
-    function describeSelected(clone, selector) {
-      const node = clone.querySelector(selector)
+    function describeSelected(scope, selector) {
+      if (scope === null || scope === undefined) return null
+      const node = scope.querySelector(selector)
       if (node === null) return null
       const info = describeElement(node)
       const attrs = Object.entries(info.attrs)
         .map(([name, value]) => (value === '' ? name : `${name}="${value}"`))
         .join(' ')
       const head = attrs === '' ? `<${info.tag}>` : `<${info.tag} ${attrs}>`
-      return `${head} | ${info.text === '' ? '-' : info.text} | ${info.children}`
+      return `${head} | ${info.text === '' ? '-' : info.text}`
     }
 
     // ===== views/editor/drag.js ======================================
@@ -5224,7 +5240,7 @@ window.__ModuleLoader__.load({
             t('settings.editor.side.add'),
           ),
         ),
-        detail === null ? null : h('div', { className: 'cs-ed-note' }, detail),
+        detail === null ? null : h('div', { className: 'cs-ed-note cs-ed-detail' }, detail),
         h('div', { className: 'cs-ed-note' }, t('settings.editor.side.ruleNote')),
         h(
           'div',
@@ -6573,10 +6589,14 @@ window.__ModuleLoader__.load({
 
       const styleKeys = rule === null ? [] : Object.keys(rule.style)
       const attrKeys = rule === null ? [] : Object.keys(rule.attrs)
+      // The note describes the element as the reader knows it, so it is read from the live page: the
+      // copy carries the selection class and the hiding style this surface just applied, and printing
+      // those back would make the picture's own bookkeeping look like part of the conversation.
       const detail =
-        elementSelection === null || stageRef.current === null
+        elementSelection === null
           ? null
-          : describeSelected(stageRef.current.clone, elementSelection.selector)
+          : describeSelected(document, elementSelection.selector) ??
+            (stageRef.current === null ? null : describeSelected(stageRef.current.clone, elementSelection.selector))
 
       const inspector =
         blockSelection !== null
@@ -6761,7 +6781,7 @@ window.__ModuleLoader__.load({
           'div',
           { className: 'cs-ed-split-main' },
           elementSelection !== null
-            ? h('div', { className: 'cs-ed-panel' }, h('div', { className: 'cs-ed-panel-head' }, elementSelection.tag), inspector)
+            ? h('div', { className: 'cs-ed-panel' }, inspector)
             : h('div', { className: 'cs-ed-empty-note' }, t('settings.editor.side.none')),
         ),
       )

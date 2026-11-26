@@ -632,10 +632,14 @@ function CaptureSurface({ onClose }) {
 
   const styleKeys = rule === null ? [] : Object.keys(rule.style)
   const attrKeys = rule === null ? [] : Object.keys(rule.attrs)
+  // The note describes the element as the reader knows it, so it is read from the live page: the
+  // copy carries the selection class and the hiding style this surface just applied, and printing
+  // those back would make the picture's own bookkeeping look like part of the conversation.
   const detail =
-    elementSelection === null || stageRef.current === null
+    elementSelection === null
       ? null
-      : describeSelected(stageRef.current.clone, elementSelection.selector)
+      : describeSelected(document, elementSelection.selector) ??
+        (stageRef.current === null ? null : describeSelected(stageRef.current.clone, elementSelection.selector))
 
   const inspector =
     blockSelection !== null
@@ -820,7 +824,7 @@ function CaptureSurface({ onClose }) {
       'div',
       { className: 'cs-ed-split-main' },
       elementSelection !== null
-        ? h('div', { className: 'cs-ed-panel' }, h('div', { className: 'cs-ed-panel-head' }, elementSelection.tag), inspector)
+        ? h('div', { className: 'cs-ed-panel' }, inspector)
         : h('div', { className: 'cs-ed-empty-note' }, t('settings.editor.side.none')),
     ),
   )
